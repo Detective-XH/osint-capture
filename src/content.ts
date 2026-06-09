@@ -16,14 +16,21 @@ import Defuddle from 'defuddle';
 
 // ── ClearURLs ──────────────────────────────────────────────────────────────
 
-async function loadCleanRules() {
+interface ClearUrlsProvider {
+  urlPattern: string;
+  rules?: string[];
+  exceptions?: string[];
+  rawRules?: string[];
+}
+
+async function loadCleanRules(): Promise<Record<string, ClearUrlsProvider>> {
   const url = chrome.runtime.getURL('lib/data.min.json');
   const res = await fetch(url);
   const data = await res.json();
   return data.providers; // { amazon: { urlPattern, rules, exceptions, ... }, ... }
 }
 
-function cleanUrl(rawUrl, providers) {
+function cleanUrl(rawUrl: string, providers: Record<string, ClearUrlsProvider>): string {
   let parsed;
   try { parsed = new URL(rawUrl); } catch { return rawUrl; }
 
@@ -35,7 +42,7 @@ function cleanUrl(rawUrl, providers) {
 
     // Check exceptions — skip provider if any match
     const exceptions = provider.exceptions ?? [];
-    if (exceptions.some(ex => { try { return new RegExp(ex, 'i').test(rawUrl); } catch { return false; } })) continue;
+    if (exceptions.some((ex: string) => { try { return new RegExp(ex, 'i').test(rawUrl); } catch { return false; } })) continue;
 
     // Strip tracking query params matching any rule pattern
     const rules = provider.rules ?? [];
@@ -64,21 +71,21 @@ function localISOWithOffset() {
   const now = new Date();
   const offset = -now.getTimezoneOffset(); // minutes
   const sign = offset >= 0 ? '+' : '-';
-  const pad = n => String(Math.floor(Math.abs(n))).padStart(2, '0');
+  const pad = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
   return now.toISOString().slice(0, 19) + sign + pad(offset / 60) + ':' + pad(offset % 60);
 }
 
 // ── Author normalization ───────────────────────────────────────────────────
 
-function normalizeAuthor(raw) {
+function normalizeAuthor(raw: string | null | undefined): string | null {
   if (!raw || !raw.trim()) return null;
-  const parts = raw.split(/,|\band\b/i).map(s => s.trim()).filter(Boolean);
+  const parts = raw.split(/,|\band\b/i).map((s: string) => s.trim()).filter(Boolean);
   return parts.length > 0 ? parts.join('; ') : null;
 }
 
 // ── HTML to plain text ─────────────────────────────────────────────────────
 
-function htmlToText(html) {
+function htmlToText(html: string): string {
   const div = document.createElement('div');
   div.innerHTML = html;
   return div.innerText.trim();

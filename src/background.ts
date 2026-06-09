@@ -38,7 +38,7 @@
 // ── Badge count ─────────────────────────────────────────────────────────────
 
 async function updateBadge() {
-  const { captures = [] } = await chrome.storage.local.get('captures');
+  const { captures = [] } = await chrome.storage.local.get('captures') as { captures?: any[] };
   const count = captures.length;
   if (count === 0) {
     chrome.action.setBadgeText({ text: '' });
@@ -51,7 +51,7 @@ async function updateBadge() {
 
 // ── SHA-256 hash (runs in secure service worker context) ────────────────────
 
-async function computeHash(text) {
+async function computeHash(text: string) {
   try {
     const data = new TextEncoder().encode(text);
     const buf = await self.crypto.subtle.digest('SHA-256', data);
@@ -65,7 +65,7 @@ async function computeHash(text) {
 
 // ── Badge flash ─────────────────────────────────────────────────────────────
 
-function flashBadge(success) {
+function flashBadge(success: boolean) {
   // WHY: only feedback channel for background captures — no popup DOM available
   chrome.action.setBadgeText({ text: success ? '✓' : '✗' });
   chrome.action.setBadgeBackgroundColor({ color: success ? '#26a641' : '#d1242f' });
@@ -78,9 +78,9 @@ function flashBadge(success) {
 
 async function getActiveSchema() {
   // WHY: stamps schema provenance on link-capture items (same field as popup.js savePreviewItem)
-  const { schemas: sd = {} } = await chrome.storage.local.get('schemas');
+  const { schemas: sd = {} } = await chrome.storage.local.get('schemas') as { schemas?: any };
   const list   = Array.isArray(sd.schemas) ? sd.schemas : [];
-  const active = list.find(s => s.id === sd.active_schema_id) ?? list[0];
+  const active = list.find((s: any) => s.id === sd.active_schema_id) ?? list[0];
   return {
     id:   active?.id   ?? '00000000-0000-0000-0000-000000000001',
     name: active?.name ?? 'Default',
@@ -89,9 +89,9 @@ async function getActiveSchema() {
 
 // ── Append capture ──────────────────────────────────────────────────────────
 
-async function appendCapture(item) {
+async function appendCapture(item: any) {
   // WHY: prepend to captures[] so newest items appear first — matches popup.js saveInbox order
-  const { captures = [] } = await chrome.storage.local.get('captures');
+  const { captures = [] } = await chrome.storage.local.get('captures') as { captures?: any[] };
   await chrome.storage.local.set({ captures: [item, ...captures] });
 }
 
@@ -101,7 +101,7 @@ function localISOWithOffset() {
   const now    = new Date();
   const offset = -now.getTimezoneOffset();
   const sign   = offset >= 0 ? '+' : '-';
-  const pad    = n => String(Math.floor(Math.abs(n))).padStart(2, '0');
+  const pad    = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
   return now.toISOString().slice(0, 19) + sign + pad(offset / 60) + ':' + pad(offset % 60);
 }
 
@@ -111,12 +111,12 @@ function localISOWithOffset() {
 // Supported formats: ISO passthrough, YYYY-MM-DD, YYYY/MM/DD [HH:MM], compact 8/12/14-digit,
 // Chinese date (YYYY年M月D日), English month names. All timezone-naive → UTC (Z).
 
-function _validateISO(iso) {
+function _validateISO(iso: string) {
   const d = new Date(iso);
   return isNaN(d.getTime()) ? { iso: null, failed: true } : { iso, failed: false };
 }
 
-function normalizeDate(input) {
+function normalizeDate(input: string) {
   if (!input || !input.trim()) return { iso: null, failed: false };
   const s = input.trim();
   if (s.toLowerCase() === 'na') return { iso: null, failed: false };
@@ -139,7 +139,7 @@ function normalizeDate(input) {
     const mm = String(cn[2]).padStart(2, '0'), dd = String(cn[3]).padStart(2, '0');
     return _validateISO(`${cn[1]}-${mm}-${dd}T${cn[4] ? `${cn[4]}:${cn[5]}:00` : '00:00:00'}Z`);
   }
-  const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+  const MONTHS: Record<string, number> = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
   const engA = s.match(/^(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})(?:\s+(\d{2}):(\d{2}))?$/);
   if (engA) {
     const mo = MONTHS[engA[2].substring(0, 3).toLowerCase()];
@@ -168,13 +168,13 @@ async function loadCleanRules() {
   return data.providers;
 }
 
-function cleanUrl(rawUrl, providers) {
+function cleanUrl(rawUrl: string, providers: any) {
   let parsed;
   try { parsed = new URL(rawUrl); } catch { return rawUrl; }
-  for (const provider of Object.values(providers)) {
+  for (const provider of Object.values(providers) as any[]) {
     try { if (!new RegExp(provider.urlPattern, 'i').test(rawUrl)) continue; } catch { continue; }
     const exceptions = provider.exceptions ?? [];
-    if (exceptions.some(ex => { try { return new RegExp(ex, 'i').test(rawUrl); } catch { return false; } })) continue;
+    if (exceptions.some((ex: any) => { try { return new RegExp(ex, 'i').test(rawUrl); } catch { return false; } })) continue;
     for (const rule of (provider.rules ?? [])) {
       let re; try { re = new RegExp('^(?:' + rule + ')$', 'i'); } catch { continue; }
       for (const key of [...parsed.searchParams.keys()]) { if (re.test(key)) parsed.searchParams.delete(key); }
@@ -188,14 +188,14 @@ function cleanUrl(rawUrl, providers) {
 
 // ── Meta extraction (DOMParser with regex fallback) ─────────────────────────
 
-function extractMetaFromHTML(html, url) {
+function extractMetaFromHTML(html: string, url: string) {
   // WHY: DOMParser absent in Brave/some Chromium forks — typeof guard avoids ReferenceError;
   // regex path extracts identical fields from the raw HTML string
   if (typeof DOMParser !== 'undefined') {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     // WHY: prefer article:published_time (structured schema.org) over pubdate and time[datetime]
-    let rawDate = doc.querySelector('meta[property="article:published_time"]')?.content
-               ?? doc.querySelector('meta[name="pubdate"]')?.content
+    let rawDate = (doc.querySelector('meta[property="article:published_time"]') as HTMLMetaElement | null)?.content
+               ?? (doc.querySelector('meta[name="pubdate"]') as HTMLMetaElement | null)?.content
                ?? doc.querySelector('time[datetime]')?.getAttribute('datetime')
                ?? null;
     // WHY: some sites set article:published_time to Unix epoch (e.g., udn.com → 1970-01-01);
@@ -203,30 +203,30 @@ function extractMetaFromHTML(html, url) {
     if (rawDate) {
       try {
         if (new Date(rawDate).getFullYear() < 2000) {
-          rawDate = doc.querySelector('meta[property="article:modified_time"]')?.content ?? rawDate;
+          rawDate = (doc.querySelector('meta[property="article:modified_time"]') as HTMLMetaElement | null)?.content ?? rawDate;
         }
       } catch { /* keep rawDate as-is */ }
     }
     return {
       // WHY: prefer og:title over <title> — og:title is the article headline; <title> often has
       // site name appended ("Article Title | Site Name")
-      title:   doc.querySelector('meta[property="og:title"]')?.content?.trim()
+      title:   (doc.querySelector('meta[property="og:title"]') as HTMLMetaElement | null)?.content?.trim()
                ?? doc.querySelector('title')?.textContent?.trim()
                ?? '',
-      source:  doc.querySelector('meta[property="og:site_name"]')?.content?.trim()
+      source:  (doc.querySelector('meta[property="og:site_name"]') as HTMLMetaElement | null)?.content?.trim()
                || new URL(url).hostname,
-      author:  doc.querySelector('meta[name="author"]')?.content?.trim()
-               || doc.querySelector('meta[property="article:author"]')?.content?.trim()
+      author:  (doc.querySelector('meta[name="author"]') as HTMLMetaElement | null)?.content?.trim()
+               || (doc.querySelector('meta[property="article:author"]') as HTMLMetaElement | null)?.content?.trim()
                || null,
       rawDate,
       // WHY: og:description is the best available content proxy when article body is not extracted
-      content: doc.querySelector('meta[property="og:description"]')?.content?.trim()
-               || doc.querySelector('meta[name="description"]')?.content?.trim()
+      content: (doc.querySelector('meta[property="og:description"]') as HTMLMetaElement | null)?.content?.trim()
+               || (doc.querySelector('meta[name="description"]') as HTMLMetaElement | null)?.content?.trim()
                || '',
     };
   }
   // ── Regex fallback ─────────────────────────────────────────────────────────
-  function _reMeta(nameAttr, nameVal) {
+  function _reMeta(nameAttr: string, nameVal: string) {
     // WHY: attribute order varies — match both orderings (property/name before/after content)
     const re = new RegExp(
       `<meta[^>]+${nameAttr}=["']${nameVal}["'][^>]+content=["']([^"'<>]+)["']` +
@@ -292,7 +292,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
   if (info.menuItemId === 'capture-link') {
     // WHY: catch at top level — any failure in the async chain calls flashBadge(false)
-    captureLinkItem(info.linkUrl).catch(err => {
+    captureLinkItem(info.linkUrl!).catch(err => {
       console.error('[capture-link] failed:', err);
       flashBadge(false);
     });
@@ -301,7 +301,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // ── Link capture ────────────────────────────────────────────────────────────
 
-async function captureLinkItem(rawUrl) {
+async function captureLinkItem(rawUrl: string) {
   const providers = await loadCleanRules();
   const url       = cleanUrl(rawUrl, providers);
 

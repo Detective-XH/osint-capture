@@ -10,6 +10,7 @@
  */
 
 import { showStatus } from './popup-utils.js';
+import type { Schema, Column } from '../types';
 import {
   getAllSchemas,
   getActiveSchema,
@@ -40,7 +41,7 @@ const SOURCES = [
 // naming (Capture Time / Publish Time) not SOURCES labels (Captured At / Published) so new-schema
 // columns stay consistent with the 7-column template; '' maps to 'New Column' for custom source
 // (EXT-UI-RESTRUCTURE Step 1e)
-const SOURCE_DISPLAY_NAMES = {
+const SOURCE_DISPLAY_NAMES: Record<string, string> = {
   'title':         'Title',
   'url':           'URL',
   'source':        'Source',
@@ -56,21 +57,21 @@ const SOURCE_DISPLAY_NAMES = {
 // ── Module state ─────────────────────────────────────────────────────────────
 
 // WHY: module-level refs so button handlers can close over current schema context
-let _schemas  = [];   // latest list from SchemaStore
-let _activeId = null; // id of schema loaded in column editor
-let _onSaved  = null; // callback: navigate back to SETTINGS (injected by popup.js)
+let _schemas:   Schema[]        = [];   // latest list from SchemaStore
+let _activeId:  string | null   = null; // id of schema loaded in column editor
+let _onSaved:   (() => void) | null = null; // callback: navigate back to SETTINGS (injected by popup.js)
 let _dragSrcIdx = -1; // WHY: tracks dragged column index during HTML5 drag-and-drop reorder (EXT-UI-RESTRUCTURE Step 1f)
 
 // ── Private helpers ──────────────────────────────────────────────────────────
 
-function _sourceLabel(source) {
+function _sourceLabel(source: string | null): string {
   if (!source) return 'Custom (empty on export)';
   const entry = SOURCES.find(s => s.value === source);
   return entry ? entry.label : source;
 }
 
 // WHY: builds <select> options for source dropdown; selected = current column source value
-function _buildSourceSelect(currentSource) {
+function _buildSourceSelect(currentSource: string | null): HTMLSelectElement {
   const sel = document.createElement('select');
   sel.className = 'schema-source-select';
 
@@ -93,7 +94,7 @@ function _buildSourceSelect(currentSource) {
 
 // WHY: local copy of popup-schema-store._uniqueName — not exported from store;
 // used for column-level name dedup within a single schema (EXT-UI-RESTRUCTURE Step 1d)
-function _uniqueName(name, existingLowerSet) {
+function _uniqueName(name: string, existingLowerSet: Set<string>): string {
   if (!existingLowerSet.has(name.toLowerCase())) return name;
   let counter = 2;
   while (existingLowerSet.has(`${name} (${counter})`.toLowerCase())) {
@@ -103,8 +104,8 @@ function _uniqueName(name, existingLowerSet) {
 }
 
 // WHY: readonly=true for Default schema — disables all editing controls in column rows
-function _renderColumns(columns, readonly) {
-  const container = document.getElementById('schema-columns');
+function _renderColumns(columns: Column[], readonly: boolean): void {
+  const container = document.getElementById('schema-columns') as HTMLElement;
   container.innerHTML = '';
 
   columns.forEach((col, idx) => {
@@ -117,22 +118,22 @@ function _renderColumns(columns, readonly) {
       // without losing cursor context after each move (EXT-UI-RESTRUCTURE Step 1f)
       row.draggable = true;
 
-      row.addEventListener('dragstart', e => {
+      row.addEventListener('dragstart', (e: DragEvent) => {
         _dragSrcIdx = idx;
         row.classList.add('dragging');
-        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer!.effectAllowed = 'move';
       });
 
-      row.addEventListener('dragover', e => {
+      row.addEventListener('dragover', (e: DragEvent) => {
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
+        e.dataTransfer!.dropEffect = 'move';
         // WHY: remove class from all rows then re-apply to current target so only one
         // row shows the insertion indicator at a time
         container.querySelectorAll('.schema-row').forEach(r => r.classList.remove('drag-over'));
         row.classList.add('drag-over');
       });
 
-      row.addEventListener('drop', e => {
+      row.addEventListener('drop', (e: DragEvent) => {
         e.preventDefault();
         if (_dragSrcIdx === -1 || _dragSrcIdx === idx) return;
         const cur = _readColumns();
@@ -226,20 +227,20 @@ function _renderColumns(columns, readonly) {
 }
 
 // WHY: reads current column state from DOM at save/reorder time so in-progress edits are preserved
-function _readColumns() {
-  const container = document.getElementById('schema-columns');
-  return [...container.querySelectorAll('.schema-row')].map(row => ({
-    id:     row.dataset.id,
-    name:   row.querySelector('.schema-name-input').value,
-    source: row.querySelector('.schema-source-select').value || null,
+function _readColumns(): Column[] {
+  const container = document.getElementById('schema-columns') as HTMLElement;
+  return [...container.querySelectorAll<HTMLElement>('.schema-row')].map(row => ({
+    id:     row.dataset.id!,
+    name:   row.querySelector<HTMLInputElement>('.schema-name-input')!.value,
+    source: row.querySelector<HTMLSelectElement>('.schema-source-select')!.value || null,
   }));
 }
 
 // ── Schema list rendering ────────────────────────────────────────────────────
 
 // WHY: re-populates the <select> whenever schemas change (create/delete/duplicate/import)
-function _renderSchemaSelect() {
-  const sel = document.getElementById('schema-select');
+function _renderSchemaSelect(): void {
+  const sel = document.getElementById('schema-select') as HTMLSelectElement;
   sel.innerHTML = '';
   for (const s of _schemas) {
     const opt = document.createElement('option');
@@ -251,14 +252,14 @@ function _renderSchemaSelect() {
 }
 
 // WHY: loads one schema into the name field + column editor; updates _activeId
-function _loadSchema(schema) {
+function _loadSchema(schema: Schema): void {
   _activeId = schema.id;
 
-  const nameInput = document.getElementById('schema-name-input');
-  const lockIcon  = document.getElementById('schema-lock-icon');
-  const addBtn    = document.getElementById('btn-schema-add');
-  const saveBtn   = document.getElementById('btn-schema-save');
-  const deleteBtn = document.getElementById('btn-schema-delete');
+  const nameInput = document.getElementById('schema-name-input') as HTMLInputElement;
+  const lockIcon  = document.getElementById('schema-lock-icon') as HTMLElement;
+  const addBtn    = document.getElementById('btn-schema-add') as HTMLElement;
+  const saveBtn   = document.getElementById('btn-schema-save') as HTMLElement;
+  const deleteBtn = document.getElementById('btn-schema-delete') as HTMLButtonElement;
 
   nameInput.value    = schema.name;
   nameInput.readOnly = !!schema.is_default;
@@ -273,7 +274,7 @@ function _loadSchema(schema) {
 }
 
 // WHY: reload both the selector and editor after any list mutation
-async function _reloadList(selectId) {
+async function _reloadList(selectId: string | null): Promise<void> {
   _schemas = await getAllSchemas();
   const target = _schemas.find(s => s.id === selectId) || _schemas[0];
   _activeId = target.id;
@@ -286,7 +287,7 @@ async function _reloadList(selectId) {
 // WHY: importSchema now auto-suffixes on name collision — no prompt needed; use
 // result.name (the final stored name) to locate the schema after reload
 // (EXT-UI-RESTRUCTURE Step 1c)
-async function _doImport(parsed) {
+async function _doImport(parsed: any): Promise<void> {
   const result = await importSchema(parsed);
   if (result.success) {
     _schemas = await getAllSchemas();
@@ -301,7 +302,7 @@ async function _doImport(parsed) {
 // ── Public API ───────────────────────────────────────────────────────────────
 
 // WHY: setState + onSaved injected to avoid circular dependency with popup.js
-export async function openSchemaEditor(setState, onSaved) {
+export async function openSchemaEditor(setState: (s: string) => void, onSaved: () => void): Promise<void> {
   _onSaved = onSaved;
 
   // Load all schemas and active schema in parallel
@@ -314,14 +315,14 @@ export async function openSchemaEditor(setState, onSaved) {
   setState('SCHEMA');
 
   // ── Schema selector ──────────────────────────────────────────────────────
-  document.getElementById('schema-select').onchange = async e => {
-    await setActiveSchema(e.target.value);
-    const schema = _schemas.find(s => s.id === e.target.value);
+  (document.getElementById('schema-select') as HTMLSelectElement).onchange = async e => {
+    await setActiveSchema((e.target as HTMLSelectElement).value);
+    const schema = _schemas.find(s => s.id === (e.target as HTMLSelectElement).value);
     if (schema) _loadSchema(schema);
   };
 
   // ── New schema ───────────────────────────────────────────────────────────
-  document.getElementById('btn-schema-new').onclick = async () => {
+  (document.getElementById('btn-schema-new') as HTMLElement).onclick = async () => {
     const name = window.prompt('New schema name:');
     if (!name || !name.trim()) return;
     try {
@@ -335,47 +336,47 @@ export async function openSchemaEditor(setState, onSaved) {
       await _reloadList(newSchema.id);
       await setActiveSchema(newSchema.id);
       showStatus('Schema created ✓');
-    } catch (e) {
+    } catch (e: any) {
       showStatus(e.message || 'Could not create schema');
     }
   };
 
   // ── Duplicate ────────────────────────────────────────────────────────────
-  document.getElementById('btn-schema-duplicate').onclick = async () => {
+  (document.getElementById('btn-schema-duplicate') as HTMLElement).onclick = async () => {
     try {
-      const copy = await duplicateSchema(_activeId);
+      const copy = await duplicateSchema(_activeId!);
       await setActiveSchema(copy.id);
       await _reloadList(copy.id);
       showStatus('Schema duplicated ✓');
-    } catch (e) {
+    } catch (e: any) {
       showStatus(e.message || 'Could not duplicate schema');
     }
   };
 
   // ── Delete ───────────────────────────────────────────────────────────────
-  document.getElementById('btn-schema-delete').onclick = async () => {
+  (document.getElementById('btn-schema-delete') as HTMLElement).onclick = async () => {
     const schema = _schemas.find(s => s.id === _activeId);
     if (!schema || schema.is_default) return;
     if (!window.confirm(`Delete schema "${schema.name}"? This cannot be undone.`)) return;
     try {
-      await deleteSchema(_activeId);
+      await deleteSchema(_activeId!);
       const active = await getActiveSchema();
       await _reloadList(active.id);
       showStatus('Schema deleted');
-    } catch (e) {
+    } catch (e: any) {
       showStatus(e.message || 'Could not delete schema');
     }
   };
 
   // ── Import ───────────────────────────────────────────────────────────────
-  document.getElementById('btn-schema-import').onclick = () => {
-    document.getElementById('schema-import-input').click();
+  (document.getElementById('btn-schema-import') as HTMLElement).onclick = () => {
+    (document.getElementById('schema-import-input') as HTMLElement).click();
   };
 
-  document.getElementById('schema-import-input').onchange = async e => {
-    const file = e.target.files[0];
+  (document.getElementById('schema-import-input') as HTMLInputElement).onchange = async e => {
+    const file = (e.target as HTMLInputElement).files![0];
     if (!file) return;
-    e.target.value = ''; // WHY: reset so same file can be re-imported after cancel
+    (e.target as HTMLInputElement).value = ''; // WHY: reset so same file can be re-imported after cancel
     try {
       const text   = await file.text();
       const parsed = JSON.parse(text);
@@ -386,9 +387,9 @@ export async function openSchemaEditor(setState, onSaved) {
   };
 
   // ── Export ───────────────────────────────────────────────────────────────
-  document.getElementById('btn-schema-export').onclick = async () => {
+  (document.getElementById('btn-schema-export') as HTMLElement).onclick = async () => {
     try {
-      const data     = await exportSchema(_activeId);
+      const data     = await exportSchema(_activeId!);
       const json     = JSON.stringify(data, null, 2);
       const blob     = new Blob([json], { type: 'application/json' });
       const safeName = data.schema_name.replace(/[^a-z0-9_\-]/gi, '_');
@@ -398,13 +399,13 @@ export async function openSchemaEditor(setState, onSaved) {
         saveAs:   false,
       });
       showStatus('Schema exported ✓');
-    } catch (e) {
+    } catch (e: any) {
       showStatus(e.message || 'Export failed');
     }
   };
 
   // ── Schema rename (on blur) ───────────────────────────────────────────────
-  const nameInput = document.getElementById('schema-name-input');
+  const nameInput = document.getElementById('schema-name-input') as HTMLInputElement;
   nameInput.onblur = async () => {
     const schema = _schemas.find(s => s.id === _activeId);
     if (!schema || schema.is_default) return;
@@ -418,14 +419,14 @@ export async function openSchemaEditor(setState, onSaved) {
       if (saved) nameInput.value = saved.name;
       _renderSchemaSelect();
       showStatus('Schema renamed ✓');
-    } catch (e) {
+    } catch (e: any) {
       nameInput.value = schema.name; // WHY: revert on error (e.g. duplicate name)
       showStatus(e.message || 'Could not rename schema');
     }
   };
 
   // ── Add column ───────────────────────────────────────────────────────────
-  document.getElementById('btn-schema-add').onclick = () => {
+  (document.getElementById('btn-schema-add') as HTMLElement).onclick = () => {
     const cur = _readColumns();
     // WHY: auto-suffix "New Column" if a column with that name already exists
     // (EXT-UI-RESTRUCTURE Step 1d)
@@ -436,7 +437,7 @@ export async function openSchemaEditor(setState, onSaved) {
   };
 
   // ── Save columns ─────────────────────────────────────────────────────────
-  document.getElementById('btn-schema-save').onclick = async () => {
+  (document.getElementById('btn-schema-save') as HTMLElement).onclick = async () => {
     const schema = _schemas.find(s => s.id === _activeId);
     if (!schema || schema.is_default) return;
 
@@ -449,14 +450,14 @@ export async function openSchemaEditor(setState, onSaved) {
       await saveSchema({ ...schema, columns });
       _schemas = await getAllSchemas();
       showStatus('Columns saved ✓');
-    } catch (e) {
+    } catch (e: any) {
       showStatus(e.message || 'Could not save columns');
     }
   };
 
   // ── Done / back ──────────────────────────────────────────────────────────
-  document.getElementById('btn-schema-done').onclick = () => {
-    _onSaved(); // WHY: owned by popup.js; navigates back to SETTINGS
+  (document.getElementById('btn-schema-done') as HTMLElement).onclick = () => {
+    _onSaved!(); // WHY: owned by popup.js; navigates back to SETTINGS
   };
 }
 

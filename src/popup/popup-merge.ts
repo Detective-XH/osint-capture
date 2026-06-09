@@ -17,6 +17,36 @@
 import { showStatus } from './popup-utils.js';
 import { getExportSchema } from './popup-schema.js';
 
+// ── Local type aliases (erased by esbuild) ─────────────────────────────────
+
+/** A merged CSV row: string array with an optional attribution label grafted on. */
+type MergedRow = string[] & { _opLabel?: string };
+
+/** One entry in the per-file allRows list accumulated during folder read. */
+interface RowEntry {
+  row: string[];
+  filename: string;
+}
+
+/** One header-homogeneous group produced in step 1. */
+interface Group {
+  header: string[];
+  allRows: RowEntry[];
+  totalRows: number;
+  sourceFiles: string[];
+}
+
+/** A fully merged group ready for rendering / download. */
+interface MergedGroup {
+  index: number;
+  header: string[];
+  mergedRows: MergedRow[];
+  sourceFiles: string[];
+  totalRows: number;
+  conflicts: number;
+  filename: string;
+}
+
 // ── Entry point ────────────────────────────────────────────────────────────
 
 /**
@@ -24,17 +54,17 @@ import { getExportSchema } from './popup-schema.js';
  * WHY: callback injection — setState is popup.js FSM; direct import would create circular dependency.
  * @param {Function} setState
  */
-export function openMerge(setState) {
+export function openMerge(setState: (s: string) => void): void {
   // WHY: webkitdirectory is the only reliable way to pick a folder in an extension popup.
   // showDirectoryPicker() (File System Access API) is blocked in extension popup origin.
-  const input = document.getElementById('merge-folder-input');
+  const input = document.getElementById('merge-folder-input') as HTMLInputElement;
 
   // Re-wire change handler fresh each invocation to avoid duplicate listeners from prior opens
-  const handler = (e) => {
+  const handler = (e: Event) => {
     input.removeEventListener('change', handler);
     // WHY: .catch() surfaces any async rejection (storage API, getExportSchema, FileReader)
     // as a visible error — MERGE panel stays hidden but user sees an 8-second error status.
-    _runMerge(e.target.files, setState).catch(err => {
+    _runMerge((e.target as HTMLInputElement).files!, setState).catch(err => {
       console.error('[popup-merge] Merge failed:', err);
       showStatus('Merge failed: ' + (err.message || 'unknown error'), true, 8000);
     });
@@ -47,8 +77,8 @@ export function openMerge(setState) {
 
 // ── Core merge orchestration ───────────────────────────────────────────────
 
-async function _runMerge(fileList, setState) {
-  const csvFiles = Array.from(fileList).filter(f =>
+async function _runMerge(fileList: FileList, setState: (s: string) => void): Promise<void> {
+  const csvFiles = Array.from(fileList).filter((f: File) =>
     /\.(csv|tsv)$/i.test(f.name));
 
   if (csvFiles.length === 0) {
@@ -67,7 +97,7 @@ async function _runMerge(fileList, setState) {
       chrome.storage.local.get(['csv_delimiter', 'operator_name', 'download_subfolder'], resolve)),
   ]);
 
-  const outputSep = settings.csv_delimiter === 'tab' ? '\t' : ',';
+  const outputSep = (settings as Record<string, string>).csv_delimiter === 'tab' ? '\t' : ',';
 
   // WHY: URL and operator column names come from the active schema.
   // Groups whose headers don't include these names fall back gracefully (urlIdx/opIdx = -1).
@@ -77,16 +107,16 @@ async function _runMerge(fileList, setState) {
   // ── Step 1: Group files by header ─────────────────────────────────────────
   // WHY: files from different schemas have different headers and must be merged independently;
   // key = null-byte-joined header string (null bytes are safe — unlikely in CSV column names).
-  const groupMap   = new Map(); // headerKey → { header, allRows, totalRows, sourceFiles }
-  const emptyFiles = [];        // files with no parseable header
+  const groupMap   = new Map<string, Group>(); // headerKey → { header, allRows, totalRows, sourceFiles }
+  const emptyFiles: string[] = [];             // files with no parseable header
 
   for (const file of csvFiles) {
-    let text;
+    let text: string;
     try {
       text = await _readFile(file);
     } catch (err) {
       // WHY: isolate per-file failures — one unreadable file must not abort the entire batch
-      console.warn('[popup-merge] Skipping unreadable file:', file.name, err.message);
+      console.warn('[popup-merge] Skipping unreadable file:', file.name, (err as Error).message);
       emptyFiles.push(file.name);
       continue;
     }
@@ -103,7 +133,7 @@ async function _runMerge(fileList, setState) {
     if (!groupMap.has(key)) {
       groupMap.set(key, { header, allRows: [], totalRows: 0, sourceFiles: [] });
     }
-    const group = groupMap.get(key);
+    const group = groupMap.get(key)!;
     group.totalRows += rows.length;
     group.sourceFiles.push(file.name);
     for (const row of rows) {
@@ -121,10 +151,10 @@ async function _runMerge(fileList, setState) {
   // ── Step 2: Merge each group independently ────────────────────────────────
   const now       = new Date();
   const ts        = now.toISOString().replace(/[-:T]/g, '').slice(0, 12);
-  const subfolder = (settings.download_subfolder || 'osint-captures').replace(/[^a-z0-9_\-]/gi, '-');
+  const subfolder = ((settings as Record<string, string>).download_subfolder || 'osint-captures').replace(/[^a-z0-9_\-]/gi, '-');
   const ext       = outputSep === '\t' ? 'tsv' : 'csv';
 
-  const mergedGroups = [];
+  const mergedGroups: MergedGroup[] = [];
   let groupIndex = 0;
 
   for (const [, group] of groupMap) {
@@ -157,8 +187,8 @@ async function _runMerge(fileList, setState) {
  * Merge rows from all files by URL dedup with conflict resolution.
  * WHY: URL is the canonical dedup key — same article captured by multiple analysts → one row.
  */
-function _mergeRows(allRows, urlIdx, opIdx) {
-  const mergedMap = new Map();  // url → merged row array
+function _mergeRows(allRows: RowEntry[], urlIdx: number, opIdx: number): { mergedMap: Map<string, MergedRow>; conflicts: number } {
+  const mergedMap = new Map<string, MergedRow>();  // url → merged row array
   let conflicts = 0;
 
   for (const { row, filename } of allRows) {
@@ -167,14 +197,14 @@ function _mergeRows(allRows, urlIdx, opIdx) {
     const rowKey = url || `__no_url__${mergedMap.size}`;
 
     if (!mergedMap.has(rowKey)) {
-      const stored = [...row];
+      const stored: MergedRow = [...row];
       // WHY: store filename as fallback attribution when no operator column exists
       stored._opLabel = opIdx >= 0 ? (row[opIdx] || filename) : filename;
       mergedMap.set(rowKey, stored);
       continue;
     }
 
-    const existing = mergedMap.get(rowKey);
+    const existing = mergedMap.get(rowKey)!;
     for (let i = 0; i < Math.max(existing.length, row.length); i++) {
       if (i === urlIdx) continue; // URL column — already matched; don't mutate
 
@@ -208,9 +238,9 @@ function _mergeRows(allRows, urlIdx, opIdx) {
  * Single group: compact intro + stats + one Download. Multi: "Found N" header +
  * per-group sections + Download All.
  */
-function _renderGroupSummary(mergedGroups, emptyFiles, outputSep) {
-  const container    = document.getElementById('merge-summary');
-  const actionsSlot  = document.getElementById('merge-primary-actions');
+function _renderGroupSummary(mergedGroups: MergedGroup[], emptyFiles: string[], outputSep: string): void {
+  const container    = document.getElementById('merge-summary') as HTMLElement;
+  const actionsSlot  = document.getElementById('merge-primary-actions') as HTMLElement;
   container.innerHTML   = '';
   actionsSlot.innerHTML = '';
 
@@ -245,7 +275,7 @@ function _renderGroupSummary(mergedGroups, emptyFiles, outputSep) {
       const n   = group.sourceFiles.length;
       const sep = document.createElement('div');
       sep.className   = 'merge-group-sep';
-      sep.textContent = `\u2500\u2500 ${schemaName} (${n} file${n !== 1 ? 's' : ''}) \u2500\u2500`;
+      sep.textContent = `── ${schemaName} (${n} file${n !== 1 ? 's' : ''}) ──`;
       container.appendChild(sep);
 
       _appendStat(container, 'Items captured',  group.totalRows);
@@ -305,13 +335,13 @@ function _renderGroupSummary(mergedGroups, emptyFiles, outputSep) {
  * WHY: _extractSchemaName returns 'unknown-schema' for non-standard filenames;
  * fall back to positional label so the summary always shows a meaningful name.
  */
-function _groupSchemaName(group) {
+function _groupSchemaName(group: MergedGroup): string {
   const raw = _extractSchemaName(group.sourceFiles[0]);
   return raw === 'unknown-schema' ? `Type ${group.index}` : raw;
 }
 
 /** Append a plain-text "label: value" stat line to a container element. */
-function _appendStat(container, label, value) {
+function _appendStat(container: HTMLElement, label: string, value: string | number): void {
   const row = document.createElement('div');
   row.className   = 'merge-stat';
   row.textContent = `${label}: ${value}`;
@@ -325,7 +355,7 @@ function _appendStat(container, label, value) {
  * WHY: mirrors popup-export.js naming convention so merged files sort alongside their sources.
  * Operator segment omitted when blank — avoids trailing-underscore filenames.
  */
-function _mergedFilename(sourceFiles, ts, subfolder, ext) {
+function _mergedFilename(sourceFiles: string[], ts: string, subfolder: string, ext: string): string {
   const schemaName = _extractSchemaName(sourceFiles[0]);
   const stem       = sourceFiles[0].replace(/\.(csv|tsv)$/i, '');
   const parts      = stem.split('_');
@@ -346,7 +376,7 @@ function _mergedFilename(sourceFiles, ts, subfolder, ext) {
  * middle segments (between first and last _-delimited parts) form the schema name.
  * Falls back to 'unknown-schema' for files not matching the standard pattern.
  */
-function _extractSchemaName(filename) {
+function _extractSchemaName(filename: string): string {
   const stem  = filename.replace(/\.(csv|tsv)$/i, '');
   const parts = stem.split('_');
   if (parts.length >= 3) return parts.slice(1, -1).join('_');
@@ -360,7 +390,7 @@ function _extractSchemaName(filename) {
  * WHY: filename (including subfolder path) is pre-computed in _runMerge so all groups
  * share the same timestamp — consistent batch naming even if downloads are triggered later.
  */
-function _downloadGroup(header, rows, filename, sep) {
+function _downloadGroup(header: string[], rows: MergedRow[], filename: string, sep: string): void {
   const text = _buildCsvText(header, rows, sep);
   const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
   const stem = filename.split('/').pop();
@@ -381,9 +411,9 @@ function _downloadGroup(header, rows, filename, sep) {
  * WHY: UTF-8 BOM prefix ensures Excel and Google Sheets correctly interpret
  * CJK characters without encoding prompt — matches Phase 3 export format.
  */
-function _buildCsvText(header, rows, sep) {
-  const BOM = '\uFEFF';
-  const escape = v => _csvEscape(v, sep);
+function _buildCsvText(header: string[], rows: MergedRow[], sep: string): string {
+  const BOM = '﻿';
+  const escape = (v: string) => _csvEscape(v, sep);
 
   const headerLine = header.map(escape).join(sep);
   const dataLines  = rows.map(row =>
@@ -397,10 +427,10 @@ function _buildCsvText(header, rows, sep) {
  * @param {File} file
  * @returns {Promise<string>}
  */
-function _readFile(file) {
-  return new Promise((resolve, reject) => {
+function _readFile(file: File): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload  = e => resolve(e.target.result);
+    reader.onload  = e => resolve((e.target as FileReader).result as string);
     // WHY: rejection propagates to the try/catch in the _runMerge loop — the failed file is
     // skipped (logged to console.warn, added to emptyFiles); remaining files continue.
     reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
@@ -412,7 +442,7 @@ function _readFile(file) {
  * Detect CSV delimiter from file extension.
  * WHY: .tsv files use tab by convention; all others default to comma.
  */
-function _detectSep(filename) {
+function _detectSep(filename: string): string {
   return /\.tsv$/i.test(filename) ? '\t' : ',';
 }
 
@@ -422,13 +452,13 @@ function _detectSep(filename) {
  * WHY: BOM stripped from first field so header comparison works across
  * files with and without BOM prefix.
  */
-function _parseCsv(text, sep) {
+function _parseCsv(text: string, sep: string): { header: string[]; rows: string[][] } {
   // WHY: strip UTF-8 BOM if present — Excel adds it; without stripping,
   // the first header field won't match the schema display name
-  const clean = text.startsWith('\uFEFF') ? text.slice(1) : text;
+  const clean = text.startsWith('﻿') ? text.slice(1) : text;
   const lines = clean.split(/\r?\n/);
 
-  const result = [];
+  const result: string[][] = [];
   for (const line of lines) {
     if (line.trim() === '') continue;
     result.push(_parseCsvLine(line, sep));
@@ -441,8 +471,8 @@ function _parseCsv(text, sep) {
 /**
  * Parse one CSV line respecting RFC 4180 quoting.
  */
-function _parseCsvLine(line, sep) {
-  const fields = [];
+function _parseCsvLine(line: string, sep: string): string[] {
+  const fields: string[] = [];
   let i = 0;
 
   while (i <= line.length) {
@@ -485,7 +515,7 @@ function _parseCsvLine(line, sep) {
  * WHY: inline copy — popup-export.js _csvEscape is private to that module (not exported).
  * Implementation matches RFC 4180 and Phase 3 export format exactly.
  */
-function _csvEscape(value, sep) {
+function _csvEscape(value: string, sep: string): string {
   if (value.includes(sep) || value.includes('"') || value.includes('\n') || value.includes('\r')) {
     return '"' + value.replace(/"/g, '""') + '"';
   }

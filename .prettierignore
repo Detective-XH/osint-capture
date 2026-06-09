@@ -1,0 +1,6 @@
+dist/
+temp/
+node_modules/
+package-lock.json
+src/lib/data.min.json
+src/icons/
