@@ -1,0 +1,11 @@
+dist/
+node_modules/
+CLAUDE.md
+.DS_Store
+**/.DS_Store
+.claude/
+.mcp.json
+.codegraph/
+.docgraph/
+plans/
+temp/

@@ -1,0 +1,16 @@
+{
+  "name": "osint-capture",
+  "version": "0.1.2",
+  "private": true,
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch"
+  },
+  "dependencies": {
+    "defuddle": "^0.12.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "sharp": "^0.33.0"
+  }
+}

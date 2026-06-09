@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build extension
+        run: node build.js
+
+      - name: Package zip
+        run: |
+          cd dist
+          zip -r ../osint-capture.zip .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "OSINT Capture ${{ github.ref_name }}"
+          body: |
+            ## OSINT Capture ${{ github.ref_name }}
+
+            ### Installation
+            1. Download `osint-capture.zip` below
+            2. Unzip to a local folder
+            3. Chrome → `chrome://extensions` → Enable Developer mode
+            4. Click "Load unpacked" → select the unzipped folder
+
+            ### Update
+            1. Download new zip, unzip (replace old folder contents)
+            2. Chrome → `chrome://extensions` → click ↺ on OSINT Capture
+          files: osint-capture.zip
+          draft: false
+          prerelease: true

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OSINT Capture</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- Row 1: action bar — hidden by setState in SETTINGS/SCHEMA/MERGE states -->
+  <div id="toolbar">
+    <button id="btn-capture" class="btn-primary">Capture</button>
+    <div class="toolbar-export-group">
+      <span class="toolbar-export-label">Export:</span>
+      <button id="btn-export-all" class="btn-secondary" disabled>All</button>
+      <button id="btn-export-selected" class="btn-secondary" disabled>Selected</button>
+    </div>
+    <button id="btn-merge" class="btn-secondary btn-merge">Merge</button>
+  </div>
+
+  <!-- Row 2: context bar — schema selector + operator name + settings -->
+  <!-- WHY: replaces #operator-bar; setState now hides both rows together in sub-page states -->
+  <div id="context-bar">
+    <select id="context-schema-select"></select>
+    <!-- WHY: wrapper groups "by:" + operator name as one flex unit so justify-content:space-between
+         in #context-bar does not split them; context-bar has 3 children: select | group | settings -->
+    <div class="context-operator-group">
+      <span class="context-by-label">by:</span>
+      <!-- WHY: keeps id="operator-name-display" — popup-settings.js references this ID directly -->
+      <span id="operator-name-display" tabindex="0" role="button"
+            aria-label="Edit operator name" title="Click to edit"></span>
+    </div>
+    <button id="btn-settings" class="btn-secondary btn-settings">Settings</button>
+  </div>
+
+  <!-- Preview bar: shown only during PREVIEW state (display controlled by JS) -->
+  <div id="preview-bar" style="display:none">
+    <button id="btn-save" class="btn-save">Save</button>
+    <button id="btn-discard" class="btn-discard">Discard</button>
+  </div>
+
+  <!-- Status bar: transient messages -->
+  <div id="status-bar" hidden></div>
+
+  <!-- INBOX state: item list -->
+  <div id="inbox"></div>
+
+  <!-- PREVIEW state: editable capture form (not yet saved) -->
+  <!-- WHY: #preview-fields is empty; schema-driven fields injected by showPreview() (Step 3) -->
+  <div id="preview-panel" hidden>
+    <div id="preview-fields"></div>
+  </div>
+
+  <!-- DETAIL state: schema-driven item view (Step 6) -->
+  <!-- WHY: #detail-fields is empty; schema-driven fields injected by showDetail() using item.schema_id -->
+  <div id="detail-panel" hidden>
+    <div id="detail-header"></div>
+    <div id="detail-fields"></div>
+    <div class="detail-actions" id="detail-actions">
+      <button id="btn-delete" class="btn-danger">Delete</button>
+      <button id="btn-close-detail" class="btn-secondary">Close</button>
+    </div>
+  </div>
+
+  <!-- SETTINGS state: operator config -->
+  <div id="settings-panel" hidden>
+    <div class="settings-header">Settings</div>
+    <div class="settings-field">
+      <label>Operator name</label>
+      <input id="set-operator" type="text" placeholder="your name or callsign">
+    </div>
+    <div class="settings-field">
+      <label>Downloads subfolder</label>
+      <input id="set-subfolder" type="text" placeholder="osint-captures">
+      <div class="settings-hint">Saved to Downloads/{subfolder}/</div>
+    </div>
+    <div class="settings-field">
+      <label>Export format</label>
+      <select id="set-export-format">
+        <option value="json">JSON</option>
+        <option value="csv">CSV</option>
+        <option value="both">Both (JSON + CSV)</option>
+      </select>
+    </div>
+    <div class="settings-field">
+      <label>CSV delimiter</label>
+      <select id="set-csv-delimiter">
+        <option value="comma">Comma (,)</option>
+        <option value="tab">Tab</option>
+      </select>
+    </div>
+    <div class="settings-field">
+      <label>Export Schema</label>
+      <button id="btn-customize-schema" class="btn-secondary" style="width:100%">Manage Schemas</button>
+    </div>
+    <div class="settings-actions">
+      <button id="btn-settings-save" class="btn-save">Save settings</button>
+      <button id="btn-settings-cancel" class="btn-secondary">Cancel</button>
+    </div>
+  </div>
+
+  <!-- SCHEMA state: multi-schema manager + column editor -->
+  <div id="schema-panel" hidden>
+    <div class="settings-header">Export Schemas</div>
+
+    <!-- Schema selector row: dropdown + New / Duplicate / Delete icon buttons -->
+    <div class="schema-list-row">
+      <select id="schema-select" class="schema-select"></select>
+      <button id="btn-schema-new"       class="btn-icon" title="New schema">＋</button>
+      <button id="btn-schema-duplicate" class="btn-icon" title="Duplicate schema">⧉</button>
+      <button id="btn-schema-delete"    class="btn-icon btn-icon--danger" title="Delete schema">🗑</button>
+    </div>
+
+    <!-- Import / Export row -->
+    <div class="schema-io-row">
+      <button id="btn-schema-import" class="btn-secondary">Import JSON</button>
+      <button id="btn-schema-export" class="btn-secondary">Export JSON</button>
+    </div>
+
+    <!-- Schema name (editable for non-default schemas; readonly + lock for Default) -->
+    <div class="schema-name-row">
+      <input id="schema-name-input" type="text" class="schema-name-field" placeholder="Schema name">
+      <span id="schema-lock-icon" class="schema-lock" hidden>🔒</span>
+    </div>
+
+    <!-- Column editor (read-only when Default schema is active) -->
+    <div id="schema-columns"></div>
+    <div class="schema-actions" id="schema-column-actions">
+      <button id="btn-schema-add" class="btn-secondary">+ Add Column</button>
+    </div>
+    <div class="schema-bottom-actions">
+      <button id="btn-schema-save" class="btn-save">Save Columns</button>
+      <button id="btn-schema-done" class="btn-secondary">Done</button>
+    </div>
+
+    <!-- WHY: file input for JSON schema import; triggered programmatically by btn-schema-import -->
+    <input type="file" id="schema-import-input" accept=".json" hidden>
+  </div>
+
+  <!-- MERGE state: CSV merge summary + download -->
+  <div id="merge-panel" hidden>
+    <div class="settings-header">Merge Summary</div>
+    <div id="merge-summary"></div>
+    <div class="merge-actions">
+      <!-- WHY: populated dynamically by _renderGroupSummary — single [Download] or [Download All] -->
+      <div id="merge-primary-actions"></div>
+      <button id="btn-merge-cancel" class="btn-secondary">Cancel</button>
+    </div>
+  </div>
+
+  <!-- WHY: webkitdirectory lets user select a folder; showDirectoryPicker blocked in extension popup context.
+       accept=".csv,.tsv" is ignored by the browser when webkitdirectory is set (Chromium behaviour);
+       the JS filter in popup-merge.js (_runMerge) is the actual gate for file-type inclusion. -->
+  <input type="file" id="merge-folder-input" webkitdirectory multiple accept=".csv,.tsv" hidden>
+
+  <script src="popup.js"></script>
+</body>
+</html>

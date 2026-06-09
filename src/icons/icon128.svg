@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <!-- TL corner → center: #6c8ebf → transparent -->
+    <linearGradient id="g-tl" gradientUnits="userSpaceOnUse" x1="16" y1="16" x2="64" y2="64">
+      <stop offset="0%" stop-color="#6c8ebf" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#6c8ebf" stop-opacity="0"/>
+    </linearGradient>
+    <!-- center → BR corner: transparent → #e8e8f0 -->
+    <linearGradient id="g-br" gradientUnits="userSpaceOnUse" x1="64" y1="64" x2="112" y2="112">
+      <stop offset="0%" stop-color="#e8e8f0" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#e8e8f0" stop-opacity="1"/>
+    </linearGradient>
+    <!-- TR corner → center: #6c8ebf → transparent -->
+    <linearGradient id="g-tr" gradientUnits="userSpaceOnUse" x1="112" y1="16" x2="64" y2="64">
+      <stop offset="0%" stop-color="#6c8ebf" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#6c8ebf" stop-opacity="0"/>
+    </linearGradient>
+    <!-- center → BL corner: transparent → #e8e8f0 -->
+    <linearGradient id="g-bl" gradientUnits="userSpaceOnUse" x1="64" y1="64" x2="16" y2="112">
+      <stop offset="0%" stop-color="#e8e8f0" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#e8e8f0" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="14" fill="#1a1a2e"/>
+  <!-- diagonal: TL→BR, split at center -->
+  <line x1="16" y1="16" x2="64" y2="64" stroke="url(#g-tl)" stroke-width="4" stroke-linecap="round"/>
+  <line x1="64" y1="64" x2="112" y2="112" stroke="url(#g-br)" stroke-width="4" stroke-linecap="round"/>
+  <!-- diagonal: TR→BL, split at center -->
+  <line x1="112" y1="16" x2="64" y2="64" stroke="url(#g-tr)" stroke-width="4" stroke-linecap="round"/>
+  <line x1="64" y1="64" x2="16" y2="112" stroke="url(#g-bl)" stroke-width="4" stroke-linecap="round"/>
+</svg>

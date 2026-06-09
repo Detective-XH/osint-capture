@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="g-tl" gradientUnits="userSpaceOnUse" x1="2" y1="2" x2="8" y2="8">
+      <stop offset="0%" stop-color="#6c8ebf" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#6c8ebf" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="g-br" gradientUnits="userSpaceOnUse" x1="8" y1="8" x2="14" y2="14">
+      <stop offset="0%" stop-color="#e8e8f0" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#e8e8f0" stop-opacity="1"/>
+    </linearGradient>
+    <linearGradient id="g-tr" gradientUnits="userSpaceOnUse" x1="14" y1="2" x2="8" y2="8">
+      <stop offset="0%" stop-color="#6c8ebf" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#6c8ebf" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="g-bl" gradientUnits="userSpaceOnUse" x1="8" y1="8" x2="2" y2="14">
+      <stop offset="0%" stop-color="#e8e8f0" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#e8e8f0" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+  <rect width="16" height="16" rx="2" fill="#1a1a2e"/>
+  <line x1="2" y1="2" x2="8" y2="8" stroke="url(#g-tl)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="8" y1="8" x2="14" y2="14" stroke="url(#g-br)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="14" y1="2" x2="8" y2="8" stroke="url(#g-tr)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="8" y1="8" x2="2" y2="14" stroke="url(#g-bl)" stroke-width="2" stroke-linecap="round"/>
+</svg>

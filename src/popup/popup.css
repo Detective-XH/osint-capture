@@ -1,0 +1,1027 @@
+/* OSINT Capture — Popup UI — Refined Dark Utility */
+
+:root {
+  color-scheme: light dark;             /* Bug 1 fix: inbox text visible in dark mode */
+  --popup-width: 420px;
+  --bg:          #0f1117;
+  --bg-surface:  #1c1f26;
+  --bg-hover:    #22262f;
+  --border:      #2a2d35;
+  --text:        #e6edf3;
+  --text-muted:  #7d8590;
+  --accent:      #4493f8;
+  --success:     #3fb950;
+  --danger:      #da3633;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  display: flex;
+  flex-direction: column;
+  width: var(--popup-width);            /* Bug 4 fix: explicit width, not just min-width */
+  height: 560px;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+
+#toolbar {
+  display: flex;
+  justify-content: space-between; /* WHY: distribute Capture, Export group, and Merge evenly rather than cramming left */
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* WHY: .btn-primary has flex:1 for full-width contexts (preview-bar, settings-actions);
+   override here so Capture stays compact in the toolbar flex row */
+#toolbar .btn-primary { flex: none; }
+
+/* WHY: Export label + All + Selected as a tight unit — gap distinguishes them from Capture/Merge */
+.toolbar-export-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0; /* WHY: allow flex shrink below content size at large system font sizes */
+}
+.toolbar-export-group .btn-secondary { flex: 1; min-width: 64px; text-align: center; } /* WHY: equal width for All/Selected; min-width guards against flex compression making buttons unreadable */
+
+/* WHY: "Export:" is a hint not a heading — no uppercase, weight, or letter-spacing */
+.toolbar-export-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* WHY: Merge and Settings are lower-hierarchy actions — one tier smaller than export buttons */
+.btn-merge,
+.btn-settings {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  opacity: 0.5;               /* WHY: visually quieter than primary export actions; 0.5 < 0.7 so they recede behind disabled export buttons */
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, opacity 0.12s;
+}
+.btn-merge:hover,
+.btn-settings:hover { background: var(--bg-hover); border-color: var(--accent); opacity: 0.7; }
+/* WHY: defensive disabled state for future FSM transitions that may disable these buttons */
+.btn-merge:disabled,
+.btn-settings:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* ── Context bar ─────────────────────────────────────────────────────────── */
+
+#context-bar {
+  display: flex;
+  justify-content: space-between; /* WHY: distribute schema select, operator group, and Settings evenly; combined with .context-operator-group wrapper */
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* WHY: content-driven width with max cap — prevents schema name crowding operator + settings */
+#context-bar select {
+  font-size: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--text);
+  font-family: inherit;
+  max-width: 140px;
+  cursor: pointer;
+}
+
+#context-bar select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.context-by-label { color: var(--text-muted); }
+
+#operator-name-display {
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 1px 3px;
+  max-width: 120px;           /* WHY: cap at 120px so a 30-char name cannot push .btn-settings off screen */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+#operator-name-display:hover { background: var(--bg-hover); }
+
+/* WHY: groups "by:" label + operator name as one flex unit so justify-content:space-between
+   in #context-bar does not split them — context-bar then has 3 children: select | group | settings */
+.context-operator-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0; /* WHY: allow flex shrink within the context-bar row */
+}
+
+/* WHY: scoped to #context-bar — inline-edit input appears here now (moved from #operator-bar) */
+#context-bar input {
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  max-width: 140px;           /* WHY: JS width heuristic (8px/char) can exceed container bounds for long names; CSS cap prevents overflow */
+  box-shadow: 0 0 0 3px rgba(68,147,248,0.2);
+}
+
+/* ── Preview bar ─────────────────────────────────────────────────────────── */
+
+#preview-bar {
+  display: flex;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ── Status bar ──────────────────────────────────────────────────────────── */
+
+#status-bar {
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#status-bar.error { color: #e87070; background: #1e1010; }
+
+/* ── Inbox ───────────────────────────────────────────────────────────────── */
+
+#inbox {
+  flex: 1;                              /* Bug 2 fix: takes remaining height */
+  min-height: 0;                        /* Bug 2 fix: allows shrink below content height */
+  overflow-y: auto;
+}
+
+.inbox-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 24px;
+}
+
+.inbox-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  gap: 8px;
+  transition: background 0.1s;
+  border-left: 3px solid transparent;
+}
+
+.inbox-item:hover {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
+}
+
+.inbox-item.selected {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
+}
+
+.inbox-item input[type="checkbox"] {
+  margin-top: 2px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.inbox-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.inbox-item-title {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+
+.inbox-item-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;        /* WHY: long source names (full domain paths) must not wrap — inbox row height must be consistent */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Issue 3a: per-item delete button */
+.inbox-item-delete {
+  opacity: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  transition: opacity 0.1s, color 0.1s;
+}
+.inbox-item:hover .inbox-item-delete { opacity: 1; }
+.inbox-item-delete:hover { color: var(--danger); }
+
+.inbox-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+/* Flash animation for newly saved items */
+@keyframes flash-success {
+  0%, 100% { background: transparent; }
+  40%       { background: rgba(63,185,80,0.2); }
+}
+.flash-success { animation: flash-success 0.7s ease; }
+
+/* Pulse animation for capturing state */
+@keyframes pulse-opacity {
+  0%, 100% { opacity: 0.7; }
+  50%       { opacity: 1; }
+}
+.btn-primary.capturing { animation: pulse-opacity 1s ease infinite; }
+
+/* ── Inbox filter bar ────────────────────────────────────────────────────── */
+
+/* WHY: sticky so the filter stays visible while the item list scrolls beneath it */
+.inbox-filter-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.inbox-filter-select {
+  max-width: 180px;           /* WHY: cap width so long schema names don't overflow toolbar */
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.inbox-filter-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.inbox-filter-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* ── Schema badge on inbox items ─────────────────────────────────────────── */
+
+/* WHY: small muted tag showing schema_name so user can visually distinguish captures by schema */
+.inbox-schema-badge {
+  display: inline-block;
+  align-self: flex-start;     /* WHY: prevents flex-column stretch — badge should wrap to content width */
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin-top: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Preview panel ───────────────────────────────────────────────────────── */
+
+#preview-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#preview-panel[hidden] { display: none; }
+
+.preview-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* WHY: #preview-fields textarea replaces old .preview-field--grow flex trick;
+   capped height prevents content from consuming all panel space, fixing custom-field clipping bug */
+#preview-fields textarea { min-height: 80px; max-height: 200px; resize: vertical; }
+
+.preview-field label,
+.detail-field label,
+.settings-field label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.preview-field input,
+.preview-field textarea {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 5px 8px;
+  width: 100%;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.preview-field input:focus,
+.preview-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(68,147,248,0.3);
+}
+
+.preview-field input[readonly] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ── Detail panel ────────────────────────────────────────────────────────── */
+
+/* WHY: renamed from #detail to #detail-panel (Step 6 — schema-driven detail) */
+#detail-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#detail-panel[hidden] { display: none; }
+
+/* WHY: schema name shown at top of detail panel (Step 6) */
+#detail-header { font-size: 11px; color: var(--text-muted); padding: 2px 0 6px; }
+.detail-schema-name { font-weight: 600; color: var(--accent); }
+.detail-schema-warn { color: var(--danger); }
+
+.detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* WHY: editable inputs in detail — all fields editable post-capture (Step 6) */
+.detail-input,
+.detail-textarea {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 4px 6px;
+  width: 100%;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.detail-input:focus,
+.detail-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(68,147,248,0.2);
+}
+.detail-textarea { min-height: 80px; resize: vertical; }
+
+/* WHY: cross-URL pick warning — user picked from a different page than the captured URL */
+.detail-pick-warn { font-size: 10px; color: var(--danger); margin-top: 2px; }
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Inline delete confirm */
+.delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Settings panel ──────────────────────────────────────────────────────── */
+
+#settings-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#settings-panel[hidden] { display: none; }
+
+.settings-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-field input {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 6px 8px;
+  width: 100%;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.settings-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(68,147,248,0.3);
+}
+
+/* WHY: select elements in settings need same styling as input fields for visual consistency */
+.settings-field select {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 6px 8px;
+  width: 100%;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.settings-field select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(68,147,248,0.3);
+}
+
+.settings-hint { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* WHY: date-hint shows inline parse result below #prev-published to guide format entry (EXT-DATE-NORMALIZE) */
+.date-hint         { display: block; font-size: 11px; margin-top: 2px; min-height: 14px; }
+.date-hint.success { color: #4caf50; }
+.date-hint.warning { color: #ff9800; }
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ── Pick button row ─────────────────────────────────────────────────────── */
+
+.preview-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.preview-input-row--grow {
+  flex: 1;
+  min-height: 0;
+  align-items: flex-start;
+}
+
+.preview-input-row input,
+.preview-input-row textarea {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.btn-pick {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.btn-pick:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  flex: 1;
+  transition: opacity 0.12s;
+  white-space: nowrap;
+}
+.btn-primary:hover { opacity: 0.85; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+.btn-secondary:hover { background: var(--bg-hover); border-color: var(--accent); }
+.btn-secondary:disabled { opacity: 0.7; cursor: not-allowed; } /* WHY: 0.7 matches Merge/Settings default opacity — disabled should not look quieter than lower-hierarchy actions */
+
+.btn-save {
+  background: var(--success);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: opacity 0.12s;
+}
+.btn-save:hover { opacity: 0.85; }
+
+.btn-discard {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  transition: background 0.12s, color 0.12s;
+}
+.btn-discard:hover { background: var(--bg-hover); color: var(--text); }
+
+.btn-icon {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.12s;
+}
+.btn-icon:hover { color: var(--text); }
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  transition: opacity 0.12s;
+}
+.btn-danger:hover { opacity: 0.85; }
+
+.btn-confirm-yes {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+}
+.btn-confirm-no {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+}
+.btn-confirm-no:hover { color: var(--text); }
+
+/* ── Schema editor panel ─────────────────────────────────────────────────── */
+
+#schema-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#schema-panel[hidden] { display: none; }
+
+.schema-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* WHY: drag-and-drop column reorder state — replaces ↑↓ buttons (EXT-UI-RESTRUCTURE Step 1f) */
+.schema-row[draggable="true"] { cursor: grab; }
+.schema-row.dragging           { opacity: 0.4; }
+/* WHY: border-top as insertion indicator — shows "drop will insert above this row" */
+.schema-row.drag-over          { border-top: 2px solid var(--accent); }
+
+.schema-name-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 3px 6px;
+}
+
+.schema-name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(68,147,248,0.2);
+}
+
+.schema-source-select {
+  width: 120px;
+  flex-shrink: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 3px 4px;
+}
+
+.schema-source-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.btn-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  flex-shrink: 0;
+  border-radius: 3px;
+}
+
+.btn-remove:hover { color: var(--danger); }
+
+.schema-actions {
+  padding-top: 4px;
+}
+
+.schema-bottom-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+}
+
+/* Schema save preview (shown briefly after save) */
+.schema-preview {
+  padding: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.schema-preview-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.schema-preview-col {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.schema-preview-col:last-of-type { border-bottom: none; }
+
+.schema-preview-name { color: var(--text); }
+
+.schema-preview-source {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+/* ── Merge panel ─────────────────────────────────────────────────────────── */
+
+#merge-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#merge-panel[hidden]    { display: none; }
+#toolbar[hidden]        { display: none; }
+#context-bar[hidden]    { display: none; }
+
+/* WHY: plain "label: value" line — left-aligned, no grid; muted colour matches settings hints */
+.merge-stat {
+  padding: 2px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* WHY: single-group intro — schema name + file count on one line before stats */
+.merge-group-intro {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  padding-bottom: 6px;
+}
+
+/* WHY: multi-group count header shown above per-group sections */
+.merge-multi-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  padding-bottom: 8px;
+}
+
+/* WHY: per-group section divider in multi-group layout; border-bottom provides visual separation
+   without card wrapping; schema name + file count at a glance */
+.merge-group-sep {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 8px 0 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+/* WHY: per-group download button spacing in multi-group layout */
+.merge-group-dl {
+  margin-top: 6px;
+  margin-bottom: 8px;
+}
+
+.merge-skipped {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-left: 12px;
+  border-left: 2px solid var(--danger);
+  margin: 4px 0;
+}
+
+.merge-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+}
+
+/* WHY: wrapper claims remaining flex space so [Download/Download All] + [Cancel] share the row */
+#merge-primary-actions { flex: 1; }
+
+/* ── Schema list controls ────────────────────────────────────────────────── */
+
+/* WHY: schema selector row holds the <select> + three icon-buttons side by side */
+.schema-list-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.schema-select {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 5px 8px;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.schema-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(68,147,248,0.2);
+}
+
+/* WHY: danger-tinted icon button for the Delete action; reuses btn-icon sizing */
+.btn-icon--danger { color: var(--danger); }
+.btn-icon--danger:hover { opacity: 0.8; }
+
+/* WHY: import/export buttons share a row, each taking equal width */
+.schema-io-row {
+  display: flex;
+  gap: 6px;
+}
+
+.schema-io-row .btn-secondary {
+  flex: 1;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+/* WHY: schema name field + optional lock icon sit on one line */
+.schema-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.schema-name-field {
+  flex: 1;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 5px 8px;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.schema-name-field:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(68,147,248,0.2);
+}
+
+/* WHY: readonly used on Default schema — cursor:default signals non-editable */
+.schema-name-field[readonly] { opacity: 0.5; cursor: default; }
+
+.schema-lock { font-size: 13px; flex-shrink: 0; }
+
+/* ── Export schema selection modal ──────────────────────────────────────── */
+
+/* WHY: fixed overlay so modal sits above all popup content; semi-transparent
+   backdrop signals a blocking action without hiding the popup chrome */
+#export-schema-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.export-modal-inner {
+  background: var(--bg-surface); /* WHY: --bg-panel was undefined (not in :root); --bg-surface matches other panel backgrounds in the popup */
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+  min-width: 210px;
+  max-width: 270px;
+}
+
+.export-modal-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.export-modal-schema-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.export-modal-schema-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.export-modal-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* ── Scrollbars ──────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
