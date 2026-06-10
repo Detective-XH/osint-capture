@@ -7,10 +7,10 @@
  */
 
 export function localISOWithOffset(): string {
-  const now    = new Date();
+  const now = new Date();
   const offset = -now.getTimezoneOffset();
-  const sign   = offset >= 0 ? '+' : '-';
-  const pad    = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+  const sign = offset >= 0 ? '+' : '-';
+  const pad = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
   return now.toISOString().slice(0, 19) + sign + pad(offset / 60) + ':' + pad(offset % 60);
 }
 
@@ -34,7 +34,9 @@ export function normalizeDate(input: string): { iso: string | null; failed: bool
   // YYYY/MM/DD HH:MM
   const slashDateTime = s.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/);
   if (slashDateTime) {
-    return _validateISO(`${slashDateTime[1]}-${slashDateTime[2]}-${slashDateTime[3]}T${slashDateTime[4]}:${slashDateTime[5]}:00Z`);
+    return _validateISO(
+      `${slashDateTime[1]}-${slashDateTime[2]}-${slashDateTime[3]}T${slashDateTime[4]}:${slashDateTime[5]}:00Z`,
+    );
   }
   // YYYY/MM/DD
   const slashDate = s.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
@@ -65,13 +67,27 @@ export function normalizeDate(input: string): { iso: string | null; failed: bool
     return _validateISO(`${cn[1]}-${mm}-${dd}T${time}Z`);
   }
   // English month names — month map (first 3 chars, case-insensitive)
-  const MONTHS: Record<string, number> = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+  const MONTHS: Record<string, number> = {
+    jan: 1,
+    feb: 2,
+    mar: 3,
+    apr: 4,
+    may: 5,
+    jun: 6,
+    jul: 7,
+    aug: 8,
+    sep: 9,
+    oct: 10,
+    nov: 11,
+    dec: 12,
+  };
   // "YYYY Mon DD [HH:MM]"
   const engA = s.match(/^(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})(?:\s+(\d{2}):(\d{2}))?$/);
   if (engA) {
     const mo = MONTHS[engA[2].substring(0, 3).toLowerCase()];
     if (mo) {
-      const mm = String(mo).padStart(2, '0'), dd = String(engA[3]).padStart(2, '0');
+      const mm = String(mo).padStart(2, '0'),
+        dd = String(engA[3]).padStart(2, '0');
       const time = engA[4] ? `${engA[4]}:${engA[5]}:00` : '00:00:00';
       return _validateISO(`${engA[1]}-${mm}-${dd}T${time}Z`);
     }
@@ -81,7 +97,8 @@ export function normalizeDate(input: string): { iso: string | null; failed: bool
   if (engB) {
     const mo = MONTHS[engB[1].substring(0, 3).toLowerCase()];
     if (mo) {
-      const mm = String(mo).padStart(2, '0'), dd = String(engB[2]).padStart(2, '0');
+      const mm = String(mo).padStart(2, '0'),
+        dd = String(engB[2]).padStart(2, '0');
       return _validateISO(`${engB[3]}-${mm}-${dd}T00:00:00Z`);
     }
   }

@@ -15,12 +15,14 @@ import type { CapturePageResponse, HashContentResponse } from '../types';
 // ── Pick mode helpers ──────────────────────────────────────────────────────
 
 export function checkAndClearPickResult() {
-  return new Promise(resolve => {
-    chrome.storage.local.get(['pick_result', 'pick_pending'], result => {
-      const pickResult  = result.pick_result ?? null;
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['pick_result', 'pick_pending'], (result) => {
+      const pickResult = result.pick_result ?? null;
       const pickPending = result.pick_pending ?? null;
       if (pickResult) {
-        chrome.storage.local.remove(['pick_result', 'pick_pending'], () => resolve({ pickResult, pickPending }));
+        chrome.storage.local.remove(['pick_result', 'pick_pending'], () =>
+          resolve({ pickResult, pickPending }),
+        );
       } else {
         resolve(null);
       }
@@ -29,7 +31,7 @@ export function checkAndClearPickResult() {
 }
 
 export function sendPickMode(itemId: string, field: string): void {
-  chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (!tabs[0]) return;
     chrome.storage.local.set({ pick_pending: { itemId, field } }, () => {
       chrome.tabs.sendMessage(tabs[0].id!, { type: 'PICK_MODE', field }, () => {
@@ -45,19 +47,21 @@ export function sendPickMode(itemId: string, field: string): void {
 
 // WHY: onPreview callback injection — showPreview mutates popup.js module state
 // (_pendingItem, setState); direct import would create circular dependency.
-type _CaptureItem = Omit<NonNullable<CapturePageResponse['item']>, 'content_hash'> & { content_hash: string | null };
+type _CaptureItem = Omit<NonNullable<CapturePageResponse['item']>, 'content_hash'> & {
+  content_hash: string | null;
+};
 
 export function captureCurrentTab(onPreview: (item: _CaptureItem) => void): void {
   const btn = document.getElementById('btn-capture') as HTMLButtonElement;
-  btn.disabled    = true;
+  btn.disabled = true;
   btn.textContent = 'Capturing…';
   btn.classList.add('capturing');
 
-  chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const tab = tabs[0];
     if (!tab) {
       showStatus('No active tab found.', true);
-      btn.disabled    = false;
+      btn.disabled = false;
       // WHY: 'Capture' is permanent — extension popup always operates on the current tab;
       //      long label was causing toolbar overflow at system font > 13px
       btn.textContent = 'Capture';
@@ -69,9 +73,9 @@ export function captureCurrentTab(onPreview: (item: _CaptureItem) => void): void
       if (chrome.runtime.lastError || !response) {
         showStatus(
           chrome.runtime.lastError?.message || 'Content script not ready. Reload the page.',
-          true
+          true,
         );
-        btn.disabled    = false;
+        btn.disabled = false;
         btn.textContent = 'Capture';
         btn.classList.remove('capturing');
         return;
@@ -79,22 +83,28 @@ export function captureCurrentTab(onPreview: (item: _CaptureItem) => void): void
 
       if (!response.ok) {
         showStatus(`Capture failed: ${response.error ?? 'unknown error'}`, true);
-        btn.disabled    = false;
+        btn.disabled = false;
         btn.textContent = 'Capture';
         btn.classList.remove('capturing');
         return;
       }
 
-      const item = response.item! as Omit<NonNullable<CapturePageResponse['item']>, 'content_hash'> & { content_hash: string | null };
+      const item = response.item! as Omit<
+        NonNullable<CapturePageResponse['item']>,
+        'content_hash'
+      > & { content_hash: string | null };
 
       // Hash computed in background.js (secure context — works on HTTP too)
-      chrome.runtime.sendMessage({ type: 'HASH_CONTENT', text: item.content || '' }, (hashResponse: HashContentResponse) => {
-        item.content_hash = hashResponse?.hash ?? null;
-        btn.disabled      = false;
-        btn.textContent   = 'Capture';
-        btn.classList.remove('capturing');
-        onPreview(item); // WHY: callback — showPreview is popup.js state mutator; avoid circular import
-      });
+      chrome.runtime.sendMessage(
+        { type: 'HASH_CONTENT', text: item.content || '' },
+        (hashResponse: HashContentResponse) => {
+          item.content_hash = hashResponse?.hash ?? null;
+          btn.disabled = false;
+          btn.textContent = 'Capture';
+          btn.classList.remove('capturing');
+          onPreview(item); // WHY: callback — showPreview is popup.js state mutator; avoid circular import
+        },
+      );
     });
   });
 }

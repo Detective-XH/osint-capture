@@ -20,7 +20,10 @@ import { loadCleanRules, cleanUrl } from './shared/clearurls';
 
 function normalizeAuthor(raw: string | null | undefined): string | null {
   if (!raw || !raw.trim()) return null;
-  const parts = raw.split(/,|\band\b/i).map((s: string) => s.trim()).filter(Boolean);
+  const parts = raw
+    .split(/,|\band\b/i)
+    .map((s: string) => s.trim())
+    .filter(Boolean);
   return parts.length > 0 ? parts.join('; ') : null;
 }
 
@@ -43,16 +46,16 @@ async function extractPage() {
   const captureTimestamp = localISOWithOffset();
 
   return {
-    title:         (result.title?.trim() || document.title?.trim() || ''),
-    url:           cleanedUrl,
-    source:        result.site?.trim() || new URL(cleanedUrl).hostname,
-    author:        normalizeAuthor(result.author),
-    captured_at:   captureTimestamp,        // immutable capture record (D-012 revised)
-    article_date:  result.published ?? null, // Defuddle-extracted article date, may be null
-    content:       htmlToText(result.content ?? ''),
-    content_hash:  null,                    // computed by background.js (crypto.subtle secure context)
+    title: result.title?.trim() || document.title?.trim() || '',
+    url: cleanedUrl,
+    source: result.site?.trim() || new URL(cleanedUrl).hostname,
+    author: normalizeAuthor(result.author),
+    captured_at: captureTimestamp, // immutable capture record (D-012 revised)
+    article_date: result.published ?? null, // Defuddle-extracted article date, may be null
+    content: htmlToText(result.content ?? ''),
+    content_hash: null, // computed by background.js (crypto.subtle secure context)
     raw_html_path: null,
-    pdf_path:      null,
+    pdf_path: null,
   };
 }
 
@@ -61,8 +64,8 @@ async function extractPage() {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'CAPTURE_PAGE') {
     extractPage()
-      .then(item => sendResponse({ ok: true, item }))
-      .catch(err => sendResponse({ ok: false, error: err.message }));
+      .then((item) => sendResponse({ ok: true, item }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true; // keep message channel open for async response
   }
 
@@ -76,10 +79,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     hint.id = 'osint-pick-hint';
     hint.textContent = `Select text for "${field}", then re-open the extension.`;
     hint.style.cssText = [
-      'position:fixed', 'top:12px', 'right:12px', 'z-index:999999',
-      'background:#0f1117', 'color:#e6edf3', 'padding:10px 14px',
-      'border-radius:8px', 'font-size:13px', 'font-family:system-ui',
-      'border-left:3px solid #4493f8', 'max-width:280px',
+      'position:fixed',
+      'top:12px',
+      'right:12px',
+      'z-index:999999',
+      'background:#0f1117',
+      'color:#e6edf3',
+      'padding:10px 14px',
+      'border-radius:8px',
+      'font-size:13px',
+      'font-family:system-ui',
+      'border-left:3px solid #4493f8',
+      'max-width:280px',
       'box-shadow:0 2px 8px rgba(0,0,0,.5)',
     ].join(';');
     document.body.appendChild(hint);
