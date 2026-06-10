@@ -24,9 +24,9 @@ function copyStatic() {
   fs.copyFileSync('src/manifest.json', 'dist/manifest.json');
   fs.copyFileSync('src/popup/popup.html',     'dist/popup/popup.html');
   fs.copyFileSync('src/popup/popup.css',      'dist/popup/popup.css');
-  fs.cpSync('src/icons', 'dist/icons', { recursive: true });
+  fs.cpSync('src/icons', 'dist/icons', { recursive: true, filter: (src) => !src.endsWith('.DS_Store') });
   fs.mkdirSync('dist/lib', { recursive: true });
-  fs.cpSync('src/lib', 'dist/lib', { recursive: true });
+  fs.cpSync('src/lib', 'dist/lib', { recursive: true, filter: (src) => !src.endsWith('.DS_Store') });
 }
 
 async function build() {
