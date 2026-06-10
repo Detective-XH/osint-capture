@@ -13,67 +13,8 @@
  */
 
 import Defuddle from 'defuddle';
-
-// ── ClearURLs ──────────────────────────────────────────────────────────────
-
-interface ClearUrlsProvider {
-  urlPattern: string;
-  rules?: string[];
-  exceptions?: string[];
-  rawRules?: string[];
-}
-
-async function loadCleanRules(): Promise<Record<string, ClearUrlsProvider>> {
-  const url = chrome.runtime.getURL('lib/data.min.json');
-  const res = await fetch(url);
-  const data = await res.json();
-  return data.providers; // { amazon: { urlPattern, rules, exceptions, ... }, ... }
-}
-
-function cleanUrl(rawUrl: string, providers: Record<string, ClearUrlsProvider>): string {
-  let parsed;
-  try { parsed = new URL(rawUrl); } catch { return rawUrl; }
-
-  for (const provider of Object.values(providers)) {
-    // Check urlPattern match
-    try {
-      if (!new RegExp(provider.urlPattern, 'i').test(rawUrl)) continue;
-    } catch { continue; }
-
-    // Check exceptions — skip provider if any match
-    const exceptions = provider.exceptions ?? [];
-    if (exceptions.some((ex: string) => { try { return new RegExp(ex, 'i').test(rawUrl); } catch { return false; } })) continue;
-
-    // Strip tracking query params matching any rule pattern
-    const rules = provider.rules ?? [];
-    for (const rule of rules) {
-      let ruleRe;
-      try { ruleRe = new RegExp('^(?:' + rule + ')$', 'i'); } catch { continue; }
-      for (const key of [...parsed.searchParams.keys()]) {
-        if (ruleRe.test(key)) parsed.searchParams.delete(key);
-      }
-    }
-
-    // Apply rawRules (path-level stripping)
-    for (const raw of (provider.rawRules ?? [])) {
-      try {
-        parsed.pathname = parsed.pathname.replace(new RegExp(raw, 'i'), '');
-      } catch { /* skip */ }
-    }
-  }
-
-  return parsed.toString();
-}
-
-// ── Local ISO timestamp with timezone offset ───────────────────────────────
-
-function localISOWithOffset() {
-  const now = new Date();
-  const offset = -now.getTimezoneOffset(); // minutes
-  const sign = offset >= 0 ? '+' : '-';
-  const pad = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
-  return now.toISOString().slice(0, 19) + sign + pad(offset / 60) + ':' + pad(offset % 60);
-}
+import { localISOWithOffset } from './shared/datetime';
+import { loadCleanRules, cleanUrl } from './shared/clearurls';
 
 // ── Author normalization ───────────────────────────────────────────────────
 

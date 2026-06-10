@@ -1,12 +1,12 @@
 /**
  * @module popup-settings
- * @responsibility Settings panel load/save (operator name, download subfolder, export format, CSV delimiter), inline operator name edit, keyboard accessibility (Enter/Space) for operator name inline edit
- * @owns chrome.storage read/write for operator_name, download_subfolder, export_format, csv_delimiter settings; inline edit DOM wiring
+ * @responsibility Settings panel load/save (operator name, download subfolder, CSV delimiter), inline operator name edit, keyboard accessibility (Enter/Space) for operator name inline edit
+ * @owns chrome.storage read/write for operator_name, download_subfolder, csv_delimiter settings; inline edit DOM wiring
  * @not-owns State machine; inbox rendering; capture flow
- * @depends-on chrome.storage.local (operator_name, download_subfolder, export_format, csv_delimiter)
+ * @depends-on chrome.storage.local (operator_name, download_subfolder, csv_delimiter)
  * @depended-by popup.js (init wiring)
  * @context popup — runs in extension popup
- * @test manual — open settings, change operator name + subfolder + format + delimiter, save, verify persisted
+ * @test manual — open settings, change operator name + subfolder + delimiter, save, verify persisted
  */
 
 import type { Settings } from '../types';
@@ -17,11 +17,10 @@ import type { Settings } from '../types';
 export async function openSettings(setState: (state: string) => void): Promise<void> {
   const result = await new Promise<Partial<Settings>>(resolve =>
     chrome.storage.local.get(
-      ['operator_name', 'download_subfolder', 'export_format', 'csv_delimiter'],
+      ['operator_name', 'download_subfolder', 'csv_delimiter'],
       resolve as (items: { [key: string]: unknown }) => void));
   (document.getElementById('set-operator') as HTMLInputElement).value = result.operator_name || '';
   (document.getElementById('set-subfolder') as HTMLInputElement).value = result.download_subfolder || '';
-  (document.getElementById('set-export-format') as HTMLSelectElement).value = result.export_format || 'json';
   (document.getElementById('set-csv-delimiter') as HTMLSelectElement).value = result.csv_delimiter || 'comma';
   setState('SETTINGS'); // WHY: callback — setState owned by popup.js
 }
@@ -33,7 +32,6 @@ export async function saveSettings(setState: (state: string) => void, renderInbo
     chrome.storage.local.set({
       operator_name: name || 'unknown',
       download_subfolder: ((document.getElementById('set-subfolder') as HTMLInputElement).value.trim() || 'osint-captures'),
-      export_format: (document.getElementById('set-export-format') as HTMLSelectElement).value,
       csv_delimiter: (document.getElementById('set-csv-delimiter') as HTMLSelectElement).value,
     }, resolve));
   (document.getElementById('operator-name-display') as HTMLElement).textContent = name || 'unknown';

@@ -723,6 +723,7 @@ async function _refreshSchemaSelect() {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 
+// eslint-disable-next-line complexity -- popup bootstrap: resumes a pending Pick then wires ~18 DOM event handlers. A verified-safe split into _wire*() helpers exists (all shared state is module-level); deferred as mechanical churn with low value vs. this branch's size.
 async function init() {
   // Operator name
   const opResult = await new Promise(resolve => chrome.storage.local.get('operator_name', resolve));

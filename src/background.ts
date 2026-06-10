@@ -28,17 +28,21 @@
  *   back to article:modified_time — covers broken CMS metadata (e.g., udn.com epoch dates)
  * @known-constraints LINK-CAPTURE-NO-DEFUDDLE: link capture uses OG/meta tag extraction only —
  *   no article body (description meta only); lower fidelity than popup path by design
- * @known-constraints LINK-CAPTURE-DUPLICATE-UTILS: normalizeDate/_validateISO/localISOWithOffset/
- *   loadCleanRules/cleanUrl duplicated from popup-utils.js and content.js — classic SW cannot
- *   import shared modules; update both copies if algorithm changes
+ * @known-constraints LINK-CAPTURE-SHARED-UTILS: normalizeDate/localISOWithOffset/loadCleanRules/
+ *   cleanUrl imported from src/shared/ (esbuild inlines them; bundled output is still a classic
+ *   script with no top-level import/export statements)
  */
 
 // OSINT Capture — Background service worker
 
+import { localISOWithOffset, normalizeDate } from './shared/datetime';
+import { loadCleanRules, cleanUrl } from './shared/clearurls';
+import type { CaptureItem, SchemaStorage } from './types';
+
 // ── Badge count ─────────────────────────────────────────────────────────────
 
 async function updateBadge() {
-  const { captures = [] } = await chrome.storage.local.get('captures') as { captures?: any[] };
+  const { captures = [] } = await chrome.storage.local.get('captures') as { captures?: CaptureItem[] };
   const count = captures.length;
   if (count === 0) {
     chrome.action.setBadgeText({ text: '' });
@@ -78,9 +82,9 @@ function flashBadge(success: boolean) {
 
 async function getActiveSchema() {
   // WHY: stamps schema provenance on link-capture items (same field as popup.js savePreviewItem)
-  const { schemas: sd = {} } = await chrome.storage.local.get('schemas') as { schemas?: any };
+  const { schemas: sd = {} as SchemaStorage } = await chrome.storage.local.get('schemas') as { schemas?: SchemaStorage };
   const list   = Array.isArray(sd.schemas) ? sd.schemas : [];
-  const active = list.find((s: any) => s.id === sd.active_schema_id) ?? list[0];
+  const active = list.find((s: { id: string }) => s.id === sd.active_schema_id) ?? list[0];
   return {
     id:   active?.id   ?? '00000000-0000-0000-0000-000000000001',
     name: active?.name ?? 'Default',
@@ -89,105 +93,15 @@ async function getActiveSchema() {
 
 // ── Append capture ──────────────────────────────────────────────────────────
 
-async function appendCapture(item: any) {
+async function appendCapture(item: CaptureItem) {
   // WHY: prepend to captures[] so newest items appear first — matches popup.js saveInbox order
-  const { captures = [] } = await chrome.storage.local.get('captures') as { captures?: any[] };
+  const { captures = [] } = await chrome.storage.local.get('captures') as { captures?: CaptureItem[] };
   await chrome.storage.local.set({ captures: [item, ...captures] });
-}
-
-// ── localISOWithOffset — DUPLICATED from popup-utils.js (classic SW cannot import) ──────────
-
-function localISOWithOffset() {
-  const now    = new Date();
-  const offset = -now.getTimezoneOffset();
-  const sign   = offset >= 0 ? '+' : '-';
-  const pad    = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
-  return now.toISOString().slice(0, 19) + sign + pad(offset / 60) + ':' + pad(offset % 60);
-}
-
-// ── normalizeDate — DUPLICATED from popup-utils.js (classic SW cannot import) ───────────────
-// WHY: apply date normalization to article:published_time meta values before storing —
-// skipping popup's preview step means we normalize at capture time instead.
-// Supported formats: ISO passthrough, YYYY-MM-DD, YYYY/MM/DD [HH:MM], compact 8/12/14-digit,
-// Chinese date (YYYY年M月D日), English month names. All timezone-naive → UTC (Z).
-
-function _validateISO(iso: string) {
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? { iso: null, failed: true } : { iso, failed: false };
-}
-
-function normalizeDate(input: string) {
-  if (!input || !input.trim()) return { iso: null, failed: false };
-  const s = input.trim();
-  if (s.toLowerCase() === 'na') return { iso: null, failed: false };
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(s)) {
-    return { iso: s, failed: false };
-  }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return _validateISO(s + 'T00:00:00Z');
-  const slashDT = s.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/);
-  if (slashDT) return _validateISO(`${slashDT[1]}-${slashDT[2]}-${slashDT[3]}T${slashDT[4]}:${slashDT[5]}:00Z`);
-  const slashD = s.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
-  if (slashD) return _validateISO(`${slashD[1]}-${slashD[2]}-${slashD[3]}T00:00:00Z`);
-  const d14 = s.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
-  if (d14) return _validateISO(`${d14[1]}-${d14[2]}-${d14[3]}T${d14[4]}:${d14[5]}:${d14[6]}Z`);
-  const d12 = s.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/);
-  if (d12) return _validateISO(`${d12[1]}-${d12[2]}-${d12[3]}T${d12[4]}:${d12[5]}:00Z`);
-  const d8 = s.match(/^(\d{4})(\d{2})(\d{2})$/);
-  if (d8) return _validateISO(`${d8[1]}-${d8[2]}-${d8[3]}T00:00:00Z`);
-  const cn = s.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s+(\d{2}):(\d{2}))?$/);
-  if (cn) {
-    const mm = String(cn[2]).padStart(2, '0'), dd = String(cn[3]).padStart(2, '0');
-    return _validateISO(`${cn[1]}-${mm}-${dd}T${cn[4] ? `${cn[4]}:${cn[5]}:00` : '00:00:00'}Z`);
-  }
-  const MONTHS: Record<string, number> = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
-  const engA = s.match(/^(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})(?:\s+(\d{2}):(\d{2}))?$/);
-  if (engA) {
-    const mo = MONTHS[engA[2].substring(0, 3).toLowerCase()];
-    if (mo) {
-      const mm = String(mo).padStart(2, '0'), dd = String(engA[3]).padStart(2, '0');
-      return _validateISO(`${engA[1]}-${mm}-${dd}T${engA[4] ? `${engA[4]}:${engA[5]}:00` : '00:00:00'}Z`);
-    }
-  }
-  const engB = s.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
-  if (engB) {
-    const mo = MONTHS[engB[1].substring(0, 3).toLowerCase()];
-    if (mo) {
-      const mm = String(mo).padStart(2, '0'), dd = String(engB[2]).padStart(2, '0');
-      return _validateISO(`${engB[3]}-${mm}-${dd}T00:00:00Z`);
-    }
-  }
-  return { iso: null, failed: true };
-}
-
-// ── ClearURLs — DUPLICATED from content.js (classic SW cannot import) ────────────────────────
-
-async function loadCleanRules() {
-  const url  = chrome.runtime.getURL('lib/data.min.json');
-  const res  = await fetch(url);
-  const data = await res.json();
-  return data.providers;
-}
-
-function cleanUrl(rawUrl: string, providers: any) {
-  let parsed;
-  try { parsed = new URL(rawUrl); } catch { return rawUrl; }
-  for (const provider of Object.values(providers) as any[]) {
-    try { if (!new RegExp(provider.urlPattern, 'i').test(rawUrl)) continue; } catch { continue; }
-    const exceptions = provider.exceptions ?? [];
-    if (exceptions.some((ex: any) => { try { return new RegExp(ex, 'i').test(rawUrl); } catch { return false; } })) continue;
-    for (const rule of (provider.rules ?? [])) {
-      let re; try { re = new RegExp('^(?:' + rule + ')$', 'i'); } catch { continue; }
-      for (const key of [...parsed.searchParams.keys()]) { if (re.test(key)) parsed.searchParams.delete(key); }
-    }
-    for (const raw of (provider.rawRules ?? [])) {
-      try { parsed.pathname = parsed.pathname.replace(new RegExp(raw, 'i'), ''); } catch { /* skip */ }
-    }
-  }
-  return parsed.toString();
 }
 
 // ── Meta extraction (DOMParser with regex fallback) ─────────────────────────
 
+// eslint-disable-next-line complexity -- intrinsic: extracts 6 independent meta fields, each via a multi-source `?.content?.trim() ?? ...` fallback chain; ESLint counts every optional-chain link, so the score is field-count × fallback-depth, not nested logic. Splitting into dom/regex helpers leaves the DOM half ~33; not worth the indirection.
 function extractMetaFromHTML(html: string, url: string) {
   // WHY: DOMParser absent in Brave/some Chromium forks — typeof guard avoids ReferenceError;
   // regex path extracts identical fields from the raw HTML string

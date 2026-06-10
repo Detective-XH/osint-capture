@@ -16,6 +16,7 @@
 
 import { showStatus } from './popup-utils.js';
 import { getExportSchema } from './popup-schema.js';
+import { csvEscape } from '../shared/csv';
 
 // ── Local type aliases (erased by esbuild) ─────────────────────────────────
 
@@ -187,6 +188,7 @@ async function _runMerge(fileList: FileList, setState: (s: string) => void): Pro
  * Merge rows from all files by URL dedup with conflict resolution.
  * WHY: URL is the canonical dedup key — same article captured by multiple analysts → one row.
  */
+// eslint-disable-next-line complexity -- recently bug-fixed merge core; the dedup loop + per-column conflict resolution does live operator-attribution reads (existing[opIdx] may be filled earlier in the same pass), so it's behavior-sensitive. A verified-safe `_resolveCell` extraction exists; deferred to avoid re-touching just-fixed logic for a lint score.
 function _mergeRows(allRows: RowEntry[], urlIdx: number, opIdx: number): { mergedMap: Map<string, MergedRow>; conflicts: number } {
   const mergedMap = new Map<string, MergedRow>();  // url → merged row array
   let conflicts = 0;
@@ -413,7 +415,7 @@ function _downloadGroup(header: string[], rows: MergedRow[], filename: string, s
  */
 function _buildCsvText(header: string[], rows: MergedRow[], sep: string): string {
   const BOM = '﻿';
-  const escape = (v: string) => _csvEscape(v, sep);
+  const escape = (v: string) => csvEscape(v, sep);
 
   const headerLine = header.map(escape).join(sep);
   const dataLines  = rows.map(row =>
@@ -448,76 +450,41 @@ function _detectSep(filename: string): string {
 
 /**
  * Parse a CSV/TSV string into header + rows arrays.
- * Handles: quoted fields, escaped double-quotes (RFC 4180), CRLF or LF.
- * WHY: BOM stripped from first field so header comparison works across
- * files with and without BOM prefix.
+ * Single-pass RFC 4180 parser: correctly handles quoted fields that contain
+ * newlines (as produced by this extension's own exporter for the content column).
+ * WHY: the previous split-on-newlines approach shredded any quoted field that
+ * spanned multiple physical lines, producing corrupt rows and phantom phantom rows.
+ * WHY: BOM stripped first so header comparison works across files with and without BOM.
  */
 function _parseCsv(text: string, sep: string): { header: string[]; rows: string[][] } {
-  // WHY: strip UTF-8 BOM if present — Excel adds it; without stripping,
-  // the first header field won't match the schema display name
-  const clean = text.startsWith('﻿') ? text.slice(1) : text;
-  const lines = clean.split(/\r?\n/);
+  // WHY: strip UTF-8 BOM (0xFEFF) if present — Excel adds it; without stripping,
+  // the first header field won't match the schema display name.
+  // charCodeAt(0) avoids the visual-lookalike ambiguity of the BOM character.
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
 
-  const result: string[][] = [];
-  for (const line of lines) {
-    if (line.trim() === '') continue;
-    result.push(_parseCsvLine(line, sep));
-  }
+  const rows: string[][] = [];
+  let row: string[] = [], field = '', inQuotes = false, i = 0;
 
-  if (result.length === 0) return { header: [], rows: [] };
-  return { header: result[0], rows: result.slice(1) };
-}
-
-/**
- * Parse one CSV line respecting RFC 4180 quoting.
- */
-function _parseCsvLine(line: string, sep: string): string[] {
-  const fields: string[] = [];
-  let i = 0;
-
-  while (i <= line.length) {
-    if (i === line.length) { fields.push(''); break; }
-
-    if (line[i] === '"') {
-      // Quoted field: consume until closing quote, doubling escape ""
-      let field = '';
-      i++; // skip opening quote
-      while (i < line.length) {
-        if (line[i] === '"') {
-          if (line[i + 1] === '"') {
-            field += '"';
-            i += 2;
-          } else {
-            i++; // skip closing quote
-            break;
-          }
-        } else {
-          field += line[i++];
-        }
+  while (i < text.length) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i += 2; continue; } // escaped ""
+        inQuotes = false; i++; continue;
       }
-      fields.push(field);
-      // Skip trailing separator
-      if (line[i] === sep) i++;
-    } else {
-      // Unquoted field: read until separator or end
-      const start = i;
-      while (i < line.length && line[i] !== sep) i++;
-      fields.push(line.slice(start, i));
-      if (line[i] === sep) i++;
+      field += c; i++; continue;
     }
+    if (c === '"')  { inQuotes = true; i++; continue; }
+    if (c === sep)  { row.push(field); field = ''; i++; continue; }
+    if (c === '\r') { i++; continue; }                         // swallow CR (CRLF)
+    if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
+    field += c; i++;
   }
+  // WHY: flush the trailing field/row only when there is pending content —
+  // avoids a phantom empty last row when the file ends with a newline.
+  if (field !== '' || row.length > 0) { row.push(field); rows.push(row); }
 
-  return fields;
+  if (rows.length === 0) return { header: [], rows: [] };
+  return { header: rows[0], rows: rows.slice(1) };
 }
 
-/**
- * CSV escape: wrap in quotes if value contains the delimiter, double-quotes, or newlines.
- * WHY: inline copy — popup-export.js _csvEscape is private to that module (not exported).
- * Implementation matches RFC 4180 and Phase 3 export format exactly.
- */
-function _csvEscape(value: string, sep: string): string {
-  if (value.includes(sep) || value.includes('"') || value.includes('\n') || value.includes('\r')) {
-    return '"' + value.replace(/"/g, '""') + '"';
-  }
-  return value;
-}
