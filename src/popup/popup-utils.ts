@@ -12,7 +12,7 @@
 
 // ── Time helpers ───────────────────────────────────────────────────────────
 
-export function timeAgo(isoString) {
+export function timeAgo(isoString: string): string {
   if (!isoString) return '';
   const then = new Date(isoString);
   if (isNaN(then.getTime())) return isoString;
@@ -27,32 +27,32 @@ export function timeAgo(isoString) {
   return `${days}d ago`;
 }
 
-export function localISOWithOffset() {
+export function localISOWithOffset(): string {
   const now    = new Date();
   const offset = -now.getTimezoneOffset();
   const sign   = offset >= 0 ? '+' : '-';
-  const pad    = n => String(Math.floor(Math.abs(n))).padStart(2, '0');
+  const pad    = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
   return now.toISOString().slice(0, 19) + sign + pad(offset / 60) + ':' + pad(offset % 60);
 }
 
-export function localTimestamp() {
+export function localTimestamp(): string {
   const d   = new Date();
-  const pad = n => String(n).padStart(2, '0');
+  const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-` +
          `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
 // ── Status bar ─────────────────────────────────────────────────────────────
 
-let _statusTimer = null;
+let _statusTimer: ReturnType<typeof setTimeout> | null = null;
 
-export function showStatus(msg, isError = false, durationMs = 3000) {
+export function showStatus(msg: string, isError = false, durationMs = 3000): void {
   if (isError) durationMs = Math.max(durationMs, 4000);
-  const bar = document.getElementById('status-bar');
+  const bar = document.getElementById('status-bar')!;
   bar.textContent = msg;
   bar.className   = isError ? 'error' : '';
   bar.hidden      = false;
-  clearTimeout(_statusTimer);
+  clearTimeout(_statusTimer!);
   _statusTimer = setTimeout(() => { bar.hidden = true; }, durationMs);
 }
 
@@ -62,7 +62,7 @@ export function showStatus(msg, isError = false, durationMs = 3000) {
 // extraction, and manual entry. All timezone-naive inputs default to UTC (Z) per EXT-DATE-NORMALIZE.
 // Supported: ISO passthrough, YYYY-MM-DD, YYYY/MM/DD HH:MM, YYYY/MM/DD, 14/12/8-digit compact,
 // Chinese date (YYYY年M月D日 [HH:MM]), English month names (YYYY Mon DD, Mon DD YYYY).
-export function normalizeDate(input) {
+export function normalizeDate(input: string): { iso: string | null; failed: boolean } {
   if (!input || !input.trim()) return { iso: null, failed: false };
   const s = input.trim();
   if (s.toLowerCase() === 'na') return { iso: null, failed: false };
@@ -109,7 +109,7 @@ export function normalizeDate(input) {
     return _validateISO(`${cn[1]}-${mm}-${dd}T${time}Z`);
   }
   // English month names — month map (first 3 chars, case-insensitive)
-  const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+  const MONTHS: Record<string, number> = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
   // "YYYY Mon DD [HH:MM]"
   const engA = s.match(/^(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})(?:\s+(\d{2}):(\d{2}))?$/);
   if (engA) {
@@ -133,7 +133,7 @@ export function normalizeDate(input) {
 }
 
 // WHY: validates the constructed ISO string to catch impossible dates (e.g. month 13, day 32)
-function _validateISO(iso) {
+function _validateISO(iso: string): { iso: string | null; failed: boolean } {
   const d = new Date(iso);
   return isNaN(d.getTime()) ? { iso: null, failed: true } : { iso, failed: false };
 }
@@ -145,9 +145,9 @@ function _validateISO(iso) {
 // pendingItem param reserved for EXT-CUSTOM-SCHEMA (field-aware normalization).
 // dateParseRetry replaces isSecondEnter — truthy means user already saw the ⚠ warning.
 // Returns new dateParseRetry value for caller to store in module state.
-export function applyDateNormalize(pendingItem, dateParseRetry) {
-  const pubInput = document.getElementById('prev-published');
-  const dateHint = document.getElementById('date-hint');
+export function applyDateNormalize(pendingItem: unknown, dateParseRetry: boolean): boolean {
+  const pubInput = document.getElementById('prev-published') as HTMLInputElement;
+  const dateHint = document.getElementById('date-hint')!;
   const result   = normalizeDate(pubInput.value);
   if (!result.failed && result.iso !== null) {
     // Success: replace input with normalized ISO, show ✓

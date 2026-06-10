@@ -11,6 +11,7 @@
  * @known-constraints FALLBACK-SCHEMA-DUPLICATED: _buildFallbackSchema() is a private copy, not imported from popup.js — export variant adds name field for filename generation; importing would create a circular dep or require a new util module
  */
 
+import type { CaptureItem, Schema, Column, Settings, ExportFormat, CsvDelimiter, ExportEnvelope } from '../types';
 import { showStatus, localTimestamp, localISOWithOffset } from './popup-utils.js';
 import { getSchemaById } from './popup-schema-store.js';
 // WHY: getExportSchema removed — Step 8 resolves schema per item group via getSchemaById
@@ -19,18 +20,18 @@ import { getSchemaById } from './popup-schema-store.js';
 
 // WHY: replace spaces with hyphens, strip chars unsafe in filenames, so schema/operator
 // names compose cleanly into download paths without OS escaping issues
-function _sanitizeFilename(str) {
+function _sanitizeFilename(str: string): string {
   return (str || '').replace(/\s+/g, '-').replace(/[^a-z0-9_\-]/gi, '');
 }
 
 // WHY: mirrors _buildFallbackSchema in popup.js; adds `name` field so filename
 // generation works for captures whose schema was deleted since capture time
-function _buildFallbackSchema(item) {
+function _buildFallbackSchema(item: CaptureItem): Schema {
   const STD = ['title', 'url', 'source', 'author', 'captured_at', 'article_date', 'content', 'content_hash'];
-  const cols = STD.map(s => ({ id: s, name: s.replace(/_/g, ' '), source: s }));
+  const cols: Column[] = STD.map(s => ({ id: s, name: s.replace(/_/g, ' '), source: s }));
   for (const key of Object.keys(item.custom_fields || {}))
     cols.push({ id: key, name: key, source: null });
-  return { name: item.schema_name || 'Default', columns: cols };
+  return { name: item.schema_name || 'Default', columns: cols } as Schema;
 }
 
 // WHY: warn after export if storage is getting full; > 80% of 5 MB (chrome default)
@@ -49,20 +50,20 @@ function _checkStorageQuota() {
  * Export items per schema, emitting one file per schema group.
  * @param {Array} items - CaptureItem array to export (may span multiple schemas)
  */
-export async function exportItems(items) {
+export async function exportItems(items: CaptureItem[]) {
   if (!items || items.length === 0) {
     showStatus('Nothing to export.');
     return;
   }
 
   // WHY: load settings only — schema resolved per group below, not once globally
-  const settings = await new Promise(resolve =>
+  const settings = await new Promise<Partial<Settings>>(resolve =>
     chrome.storage.local.get(
       ['operator_name', 'download_subfolder', 'export_format', 'csv_delimiter'],
-      resolve));
+      resolve as (items: { [key: string]: unknown }) => void)) as Partial<Settings>;
 
-  const format    = settings.export_format    || 'json';
-  const delimiter = settings.csv_delimiter    || 'comma';
+  const format    = settings.export_format    || 'json' as ExportFormat;
+  const delimiter = settings.csv_delimiter    || 'comma' as CsvDelimiter;
   const operator  = settings.operator_name    || '';
   const subfolder = (settings.download_subfolder || 'osint-captures').replace(/[^a-z0-9_\-]/gi, '-');
   const timestamp = localTimestamp();
@@ -105,7 +106,7 @@ export async function exportItems(items) {
 
 export function updateExportSelectedBtn() {
   const checked = document.querySelectorAll('#inbox input[type=checkbox]:checked').length;
-  const btn     = document.getElementById('btn-export-selected');
+  const btn     = document.getElementById('btn-export-selected') as HTMLButtonElement | null;
   if (btn) btn.disabled = checked === 0;
 }
 
@@ -114,9 +115,9 @@ export function updateExportSelectedBtn() {
  * WHY: display names (not raw field names) are used as keys — schema renames
  * propagate automatically to export output.
  */
-function _mapItem(item, schema, operator) {
-  const mapped = {};
-  schema.columns.forEach(col => {
+function _mapItem(item: CaptureItem, schema: Schema, operator: string): Record<string, unknown> {
+  const mapped: Record<string, unknown> = {};
+  schema.columns.forEach((col: Column) => {
     let value;
     if (col.source === null) {
       // WHY: dual-read col.name first (current save format), then col.id (pre-Step-6 saves)
@@ -126,17 +127,17 @@ function _mapItem(item, schema, operator) {
       // WHY: operator_name is a session-level setting, not per-item — read from storage at export time
       value = operator || null;
     } else {
-      value = item[col.source] ?? null;
+      value = (item as unknown as Record<string, unknown>)[col.source] ?? null;
     }
     mapped[col.name] = value;
   });
   return mapped;
 }
 
-function _downloadJSON(items, schema, operator, subfolder, fileStem) {
-  const mappedItems = items.map(item => _mapItem(item, schema, operator));
+function _downloadJSON(items: CaptureItem[], schema: Schema, operator: string, subfolder: string, fileStem: string) {
+  const mappedItems = items.map((item: CaptureItem) => _mapItem(item, schema, operator));
 
-  const envelope = {
+  const envelope: ExportEnvelope = {
     schema_version: '1.2',
     schema_name:    schema.name,  // WHY: top-level for quick identification without parsing export_schema
     exported_at:    localISOWithOffset(),
@@ -153,18 +154,18 @@ function _downloadJSON(items, schema, operator, subfolder, fileStem) {
   });
 }
 
-function _downloadCSV(items, schema, operator, delimiter, subfolder, fileStem) {
+function _downloadCSV(items: CaptureItem[], schema: Schema, operator: string, delimiter: CsvDelimiter, subfolder: string, fileStem: string) {
   const sep = delimiter === 'tab' ? '\t' : ',';
 
   // WHY: UTF-8 BOM prefix ensures Excel and Google Sheets correctly interpret
   // CJK characters and other non-ASCII content without encoding prompt
   const BOM = '\uFEFF';
 
-  const headers = schema.columns.map(col => _csvEscape(col.name, sep));
+  const headers = schema.columns.map((col: Column) => _csvEscape(col.name, sep));
 
-  const rows = items.map(item => {
+  const rows = items.map((item: CaptureItem) => {
     const mapped = _mapItem(item, schema, operator);
-    return schema.columns.map(col => {
+    return schema.columns.map((col: Column) => {
       const value = mapped[col.name];
       // WHY: convert null/undefined to empty string — CSV has no null representation
       return _csvEscape(value == null ? '' : String(value), sep);
@@ -186,7 +187,7 @@ function _downloadCSV(items, schema, operator, delimiter, subfolder, fileStem) {
 
 // WHY: CSV escaping — wrap in quotes if value contains the delimiter, double-quotes,
 // or newlines; double any existing quotes inside the value (RFC 4180)
-function _csvEscape(value, sep) {
+function _csvEscape(value: string, sep: string): string {
   if (value.includes(sep) || value.includes('"') || value.includes('\n') || value.includes('\r')) {
     return '"' + value.replace(/"/g, '""') + '"';
   }

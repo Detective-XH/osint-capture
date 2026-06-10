@@ -9,40 +9,42 @@
  * @test manual — open settings, change operator name + subfolder + format + delimiter, save, verify persisted
  */
 
+import type { Settings } from '../types';
+
 // ── Settings state ─────────────────────────────────────────────────────────
 
 // WHY: setState callback injection — setState is popup.js FSM; direct import would create circular dependency
-export async function openSettings(setState) {
-  const result = await new Promise(resolve =>
+export async function openSettings(setState: (state: string) => void): Promise<void> {
+  const result = await new Promise<Partial<Settings>>(resolve =>
     chrome.storage.local.get(
       ['operator_name', 'download_subfolder', 'export_format', 'csv_delimiter'],
-      resolve));
-  document.getElementById('set-operator').value = result.operator_name || '';
-  document.getElementById('set-subfolder').value = result.download_subfolder || '';
-  document.getElementById('set-export-format').value = result.export_format || 'json';
-  document.getElementById('set-csv-delimiter').value = result.csv_delimiter || 'comma';
+      resolve as (items: { [key: string]: unknown }) => void));
+  (document.getElementById('set-operator') as HTMLInputElement).value = result.operator_name || '';
+  (document.getElementById('set-subfolder') as HTMLInputElement).value = result.download_subfolder || '';
+  (document.getElementById('set-export-format') as HTMLSelectElement).value = result.export_format || 'json';
+  (document.getElementById('set-csv-delimiter') as HTMLSelectElement).value = result.csv_delimiter || 'comma';
   setState('SETTINGS'); // WHY: callback — setState owned by popup.js
 }
 
 // WHY: setState + renderInbox callback injection — both are popup.js-owned; passing as parameters avoids circular import
-export async function saveSettings(setState, renderInbox) {
-  const name = document.getElementById('set-operator').value.trim();
-  await new Promise(resolve =>
+export async function saveSettings(setState: (state: string) => void, renderInbox: () => void): Promise<void> {
+  const name = (document.getElementById('set-operator') as HTMLInputElement).value.trim();
+  await new Promise<void>(resolve =>
     chrome.storage.local.set({
       operator_name: name || 'unknown',
-      download_subfolder: (document.getElementById('set-subfolder').value.trim() || 'osint-captures'),
-      export_format: document.getElementById('set-export-format').value,
-      csv_delimiter: document.getElementById('set-csv-delimiter').value,
+      download_subfolder: ((document.getElementById('set-subfolder') as HTMLInputElement).value.trim() || 'osint-captures'),
+      export_format: (document.getElementById('set-export-format') as HTMLSelectElement).value,
+      csv_delimiter: (document.getElementById('set-csv-delimiter') as HTMLSelectElement).value,
     }, resolve));
-  document.getElementById('operator-name-display').textContent = name || 'unknown';
+  (document.getElementById('operator-name-display') as HTMLElement).textContent = name || 'unknown';
   setState('INBOX');    // WHY: callback — setState owned by popup.js
   renderInbox();        // WHY: callback — renderInbox + its _currentItems/_selectedId args owned by popup.js
 }
 
 // ── Operator name inline edit ──────────────────────────────────────────────
 
-export function setupOperatorInlineEdit() {
-  const display = document.getElementById('operator-name-display');
+export function setupOperatorInlineEdit(): void {
+  const display = document.getElementById('operator-name-display')!;
 
   // WHY: keyboard accessibility — Enter/Space trigger edit (same as click) per ARIA button pattern
   display.addEventListener('keydown', e => {
@@ -63,7 +65,7 @@ export function setupOperatorInlineEdit() {
 
     const commit = async () => {
       const val = input.value.trim() || current;
-      await new Promise(resolve => chrome.storage.local.set({ operator_name: val }, resolve));
+      await new Promise<void>(resolve => chrome.storage.local.set({ operator_name: val }, resolve));
       const newDisplay = document.createElement('span');
       newDisplay.id          = 'operator-name-display';
       newDisplay.title       = 'Click to edit';

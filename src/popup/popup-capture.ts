@@ -10,6 +10,7 @@
  */
 
 import { showStatus } from './popup-utils.js';
+import type { CapturePageResponse, HashContentResponse } from '../types';
 
 // ── Pick mode helpers ──────────────────────────────────────────────────────
 
@@ -27,11 +28,11 @@ export function checkAndClearPickResult() {
   });
 }
 
-export function sendPickMode(itemId, field) {
+export function sendPickMode(itemId: string, field: string): void {
   chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
     if (!tabs[0]) return;
     chrome.storage.local.set({ pick_pending: { itemId, field } }, () => {
-      chrome.tabs.sendMessage(tabs[0].id, { type: 'PICK_MODE', field }, () => {
+      chrome.tabs.sendMessage(tabs[0].id!, { type: 'PICK_MODE', field }, () => {
         if (chrome.runtime.lastError) {
           chrome.storage.local.remove('pick_pending');
         }
@@ -44,8 +45,10 @@ export function sendPickMode(itemId, field) {
 
 // WHY: onPreview callback injection — showPreview mutates popup.js module state
 // (_pendingItem, setState); direct import would create circular dependency.
-export function captureCurrentTab(onPreview) {
-  const btn = document.getElementById('btn-capture');
+type _CaptureItem = Omit<NonNullable<CapturePageResponse['item']>, 'content_hash'> & { content_hash: string | null };
+
+export function captureCurrentTab(onPreview: (item: _CaptureItem) => void): void {
+  const btn = document.getElementById('btn-capture') as HTMLButtonElement;
   btn.disabled    = true;
   btn.textContent = 'Capturing…';
   btn.classList.add('capturing');
@@ -62,7 +65,7 @@ export function captureCurrentTab(onPreview) {
       return;
     }
 
-    chrome.tabs.sendMessage(tab.id, { type: 'CAPTURE_PAGE' }, response => {
+    chrome.tabs.sendMessage(tab.id!, { type: 'CAPTURE_PAGE' }, (response: CapturePageResponse) => {
       if (chrome.runtime.lastError || !response) {
         showStatus(
           chrome.runtime.lastError?.message || 'Content script not ready. Reload the page.',
@@ -82,10 +85,10 @@ export function captureCurrentTab(onPreview) {
         return;
       }
 
-      const item = response.item;
+      const item = response.item! as Omit<NonNullable<CapturePageResponse['item']>, 'content_hash'> & { content_hash: string | null };
 
       // Hash computed in background.js (secure context — works on HTTP too)
-      chrome.runtime.sendMessage({ type: 'HASH_CONTENT', text: item.content || '' }, hashResponse => {
+      chrome.runtime.sendMessage({ type: 'HASH_CONTENT', text: item.content || '' }, (hashResponse: HashContentResponse) => {
         item.content_hash = hashResponse?.hash ?? null;
         btn.disabled      = false;
         btn.textContent   = 'Capture';

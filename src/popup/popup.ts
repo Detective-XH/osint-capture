@@ -17,6 +17,9 @@
  * @known-constraints FALLBACK-SCHEMA-DUPLICATED: _buildFallbackSchema() is also defined in popup-export.js — export variant adds `name` field for CSV filename generation; no shared import path exists without creating a circular dep (popup.js already imports popup-export.js)
  */
 
+import type { CaptureItem, Schema, Column, PickResult, PickPending, PickPendingItem } from '../types';
+import type {} from './popup-schema-store.js';
+declare const SchemaStore: Window['SchemaStore'];
 import { timeAgo, showStatus, normalizeDate, applyDateNormalize } from './popup-utils.js';
 import { captureCurrentTab, sendPickMode, checkAndClearPickResult } from './popup-capture.js';
 import { exportItems, updateExportSelectedBtn } from './popup-export.js';
@@ -30,25 +33,25 @@ import { openMerge } from './popup-merge.js';
 
 const STATE = { INBOX: 'INBOX', PREVIEW: 'PREVIEW', DETAIL: 'DETAIL', SETTINGS: 'SETTINGS', SCHEMA: 'SCHEMA', MERGE: 'MERGE' };
 let _state = STATE.INBOX;
-let _currentItems = [];
-let _selectedId = null;
-let _pendingItem = null; // item in preview, not yet saved to storage
+let _currentItems: CaptureItem[] = [];
+let _selectedId: string | null = null;
+let _pendingItem: PickPendingItem | null = null; // item in preview, not yet saved to storage
 let _dateParseRetry = false; // WHY: two-Enter flow — first Enter warns on parse failure, second accepts raw as-is
-let _previewSchema = null; // WHY: cached schema from last showPreview() call; savePreviewItem() reads same schema that was rendered
+let _previewSchema: Schema | null = null; // WHY: cached schema from last showPreview() call; savePreviewItem() reads same schema that was rendered
 let _filterSchema = 'All'; // WHY: schema filter for inbox list; intentionally non-persistent — resets each popup open per spec
 
-function setState(newState) {
+function setState(newState: string) {
   _state = newState;
 
-  const inbox        = document.getElementById('inbox');
-  const previewPanel = document.getElementById('preview-panel');
-  const previewBar   = document.getElementById('preview-bar');
-  const detail       = document.getElementById('detail-panel');
-  const settings     = document.getElementById('settings-panel');
-  const schema       = document.getElementById('schema-panel');
-  const merge        = document.getElementById('merge-panel');
-  const toolbar      = document.getElementById('toolbar');
-  const contextBar   = document.getElementById('context-bar');
+  const inbox        = document.getElementById('inbox') as HTMLElement;
+  const previewPanel = document.getElementById('preview-panel') as HTMLElement;
+  const previewBar   = document.getElementById('preview-bar') as HTMLElement;
+  const detail       = document.getElementById('detail-panel') as HTMLElement;
+  const settings     = document.getElementById('settings-panel') as HTMLElement;
+  const schema       = document.getElementById('schema-panel') as HTMLElement;
+  const merge        = document.getElementById('merge-panel') as HTMLElement;
+  const toolbar      = document.getElementById('toolbar') as HTMLElement;
+  const contextBar   = document.getElementById('context-bar') as HTMLElement;
 
   // Hide everything first
   inbox.hidden        = true;
@@ -103,7 +106,7 @@ const _DEFAULT_SCHEMA_ID = '00000000-0000-0000-0000-000000000001';
 
 // WHY: old captures (pre-Step 5) have no schema_id/schema_name/custom_fields;
 // normalize on read so all in-memory items have a consistent shape
-function _normalizeCapture(item) {
+function _normalizeCapture(item: CaptureItem): CaptureItem {
   return {
     ...item,
     schema_id:     item.schema_id     ?? _DEFAULT_SCHEMA_ID,
@@ -113,16 +116,16 @@ function _normalizeCapture(item) {
 }
 
 function loadInbox() {
-  return new Promise(resolve => {
+  return new Promise<CaptureItem[]>(resolve => {
     chrome.storage.local.get('captures', result => {
-      const raw = Array.isArray(result.captures) ? result.captures : [];
+      const raw = Array.isArray(result.captures) ? result.captures as CaptureItem[] : [];
       resolve(raw.map(_normalizeCapture));
     });
   });
 }
 
-function saveInbox(items) {
-  return new Promise(resolve => {
+function saveInbox(items: CaptureItem[]) {
+  return new Promise<void>(resolve => {
     chrome.storage.local.set({ captures: items }, resolve);
   });
 }
@@ -132,7 +135,7 @@ function saveInbox(items) {
 // WHY: renders sticky filter bar at top of #inbox — dropdown for schema filter + live count;
 // called by renderInbox only when items.length > 0;
 // allSchemas from SchemaStore so schemas with zero captures still appear in filter
-function _renderFilterBar(inbox, items, allSchemas) {
+function _renderFilterBar(inbox: HTMLElement, items: CaptureItem[], allSchemas: Schema[]) {
   const bar = document.createElement('div');
   bar.className = 'inbox-filter-bar';
 
@@ -174,14 +177,14 @@ function _renderFilterBar(inbox, items, allSchemas) {
   inbox.appendChild(bar);
 }
 
-async function renderInbox(items, selectedId = null) { // WHY: async to await SchemaStore.getAllSchemas for full schema list
+async function renderInbox(items: CaptureItem[], selectedId: string | null = null) { // WHY: async to await SchemaStore.getAllSchemas for full schema list
   _currentItems = items;
   _selectedId   = selectedId;
 
-  const exportAllBtn = document.getElementById('btn-export-all');
+  const exportAllBtn = document.getElementById('btn-export-all') as HTMLButtonElement;
   if (exportAllBtn) exportAllBtn.disabled = items.length === 0;
 
-  const inbox = document.getElementById('inbox');
+  const inbox = document.getElementById('inbox') as HTMLElement;
   inbox.innerHTML = '';
 
   if (items.length === 0) {
@@ -298,7 +301,7 @@ async function renderInbox(items, selectedId = null) { // WHY: async to await Sc
 // - captured_at / content_hash → readonly input (immutable or auto-computed)
 // - title, url, source, author, article_date, content → pickable (Pick button rendered; wired in Step 4)
 // - source === null → custom column; value keyed by col.name in custom_fields
-function buildPreviewField(container, col, item) {
+function buildPreviewField(container: HTMLElement, col: Column, item: CaptureItem) {
   const isContent  = col.source === 'content';
   const isReadonly = col.source === 'captured_at' || col.source === 'content_hash';
   const PICKABLE   = ['title', 'url', 'source', 'author', 'content', 'article_date'];
@@ -306,7 +309,7 @@ function buildPreviewField(container, col, item) {
 
   // Determine initial value
   const value = col.source !== null
-    ? (item[col.source] || '')
+    ? (((item as unknown as Record<string, unknown>)[col.source] as string) || '')
     : (item.custom_fields?.[col.name] || '');
 
   const div = document.createElement('div');
@@ -323,7 +326,7 @@ function buildPreviewField(container, col, item) {
   inputEl.dataset.source = col.source ?? '';
   inputEl.value          = value;
 
-  if (!isContent) inputEl.type = 'text';
+  if (!isContent) (inputEl as HTMLInputElement).type = 'text';
   if (isReadonly) inputEl.readOnly = true;
 
   // WHY: article_date input must keep id="prev-published" so applyDateNormalize() in popup-utils.js
@@ -341,7 +344,7 @@ function buildPreviewField(container, col, item) {
     // WHY: data-pick-source used by event delegation handler below to identify target field
     const pickBtn = document.createElement('button');
     pickBtn.className          = 'btn-pick';
-    pickBtn.dataset.pickSource = col.source;
+    pickBtn.dataset.pickSource = col.source as string;
     pickBtn.dataset.colId      = col.id;
     pickBtn.title              = `Select "${col.source}" from page`;
     pickBtn.textContent        = 'Pick';
@@ -364,9 +367,9 @@ function buildPreviewField(container, col, item) {
 
 // WHY: synthetic schema used when item.schema_id refers to a deleted schema —
 // renders all standard source fields + any custom_fields keys the item already has
-function _buildFallbackSchema(item) {
+function _buildFallbackSchema(item: CaptureItem): { columns: Column[] } {
   const STD = ['title', 'url', 'source', 'author', 'captured_at', 'article_date', 'content', 'content_hash'];
-  const cols = STD.map(src => ({ id: src, name: src.replace(/_/g, ' '), source: src }));
+  const cols: Column[] = STD.map(src => ({ id: src, name: src.replace(/_/g, ' '), source: src }));
   // Render surviving custom_fields by key name (may be col.name or col.id from old saves)
   for (const key of Object.keys(item.custom_fields || {})) {
     cols.push({ id: key, name: key, source: null });
@@ -379,7 +382,7 @@ function _buildFallbackSchema(item) {
 // - ALL fields editable (user can correct post-capture — no readonly constraint like Preview)
 // - pickable fields (title, url, source, author, content, article_date) get Pick button
 // - cross-URL pick shows inline warning; user may still proceed
-function buildDetailField(container, col, item, currentUrl) {
+function buildDetailField(container: HTMLElement, col: Column, item: CaptureItem, currentUrl: string) {
   const isContent  = col.source === 'content';
   const PICKABLE   = ['title', 'url', 'source', 'author', 'content', 'article_date'];
   const isPickable = col.source !== null && PICKABLE.includes(col.source);
@@ -387,7 +390,7 @@ function buildDetailField(container, col, item, currentUrl) {
   // Custom field: try col.name first (saved by savePreviewItem), fall back to col.id
   // WHY: pre-Step-6 detail auto-save used col.id; preview uses col.name — dual read for compat
   const value = col.source !== null
-    ? (item[col.source] ?? '')
+    ? (((item as unknown as Record<string, unknown>)[col.source] as string) ?? '')
     : (item.custom_fields?.[col.name] || item.custom_fields?.[col.id] || '');
 
   const div = document.createElement('div');
@@ -403,7 +406,7 @@ function buildDetailField(container, col, item, currentUrl) {
   inputEl.dataset.source     = col.source ?? '';
   inputEl.dataset.colName    = col.name;
   inputEl.value              = value;
-  if (!isContent) inputEl.type = 'text';
+  if (!isContent) (inputEl as HTMLInputElement).type = 'text';
 
   if (isPickable) {
     const row = document.createElement('div');
@@ -412,7 +415,7 @@ function buildDetailField(container, col, item, currentUrl) {
 
     const pickBtn = document.createElement('button');
     pickBtn.className          = 'btn-pick';
-    pickBtn.dataset.pickSource = col.source;
+    pickBtn.dataset.pickSource = col.source as string;
     pickBtn.dataset.colId      = col.id;
     pickBtn.title              = `Pick "${col.source}" from page`;
     pickBtn.textContent        = 'Pick';
@@ -433,15 +436,15 @@ function buildDetailField(container, col, item, currentUrl) {
   container.appendChild(div);
 }
 
-async function showPreview(item) {
-  _pendingItem    = { id: crypto.randomUUID(), ...item };
+async function showPreview(item: CaptureItem) {
+  _pendingItem    = { id: crypto.randomUUID(), ...(item as Omit<CaptureItem, 'id'>) } as PickPendingItem;
   _dateParseRetry = false;
 
   // WHY: fetch + cache schema; savePreviewItem() uses same schema so element IDs match
   const schema = await getExportSchema();
   _previewSchema  = schema;
 
-  const container = document.getElementById('preview-fields');
+  const container = document.getElementById('preview-fields') as HTMLElement;
   container.innerHTML = '';
   schema.columns.forEach(col => buildPreviewField(container, col, item));
 
@@ -451,14 +454,14 @@ async function showPreview(item) {
 async function savePreviewItem() {
   if (!_pendingItem || !_previewSchema) return;
 
-  const container    = document.getElementById('preview-fields');
-  const custom_fields = {};
+  const container    = document.getElementById('preview-fields') as HTMLElement;
+  const custom_fields: Record<string, string> = {};
 
   for (const col of _previewSchema.columns) {
     // WHY: captured_at is immutable (CAPTURED-AT-IMMUTABLE constraint); content_hash auto-computed by background.js
     if (col.source === 'captured_at' || col.source === 'content_hash') continue;
 
-    const el = container.querySelector(`[data-col-id="${col.id}"]`);
+    const el = container.querySelector(`[data-col-id="${col.id}"]`) as HTMLInputElement | HTMLTextAreaElement | null;
     if (!el) continue;
 
     if (col.source === 'article_date') {
@@ -469,7 +472,7 @@ async function savePreviewItem() {
         : (norm.failed ? (raw.trim() || null) : null);
     } else if (col.source !== null) {
       // WHY: content kept verbatim (no trim) to preserve formatting; all other fields trimmed
-      _pendingItem[col.source] = (col.source === 'content') ? el.value : el.value.trim();
+      (_pendingItem as unknown as Record<string, unknown>)[col.source] = (col.source === 'content') ? el.value : el.value.trim();
     } else {
       // WHY: custom columns keyed by display name (col.name) per Step 3 schema-driven spec;
       // empty values omitted — export treats missing key as empty (saves space)
@@ -512,17 +515,17 @@ function discardPreview() {
 
 // ── Detail state ───────────────────────────────────────────────────────────
 
-async function showDetail(item) {
+async function showDetail(item: CaptureItem) {
   _selectedId = item.id;
 
   // WHY: resolve schema from item's bound schema_id; fall back to synthetic schema
   // if the schema was deleted since capture — never silently drops field data
-  let schema = await SchemaStore.getSchemaById(item.schema_id);
+  let schema: { columns: Column[] } | null = await SchemaStore.getSchemaById(item.schema_id);
   const usingFallback = !schema;
   if (usingFallback) schema = _buildFallbackSchema(item);
 
   // Render header: schema name label + deleted-schema notice when applicable
-  const header = document.getElementById('detail-header');
+  const header = document.getElementById('detail-header') as HTMLElement;
   header.innerHTML = '';
   const nameEl = document.createElement('span');
   nameEl.className   = 'detail-schema-name';
@@ -539,14 +542,14 @@ async function showDetail(item) {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   const currentUrl = tabs[0]?.url || '';
 
-  const container = document.getElementById('detail-fields');
+  const container = document.getElementById('detail-fields') as HTMLElement;
   container.innerHTML = '';
-  for (const col of schema.columns) {
+  for (const col of schema!.columns) {
     buildDetailField(container, col, item, currentUrl);
   }
 
   // Reset delete button (in case inline confirm was left open from a prior view)
-  const deleteBtn = document.getElementById('btn-delete');
+  const deleteBtn = document.getElementById('btn-delete') as HTMLButtonElement | null;
   if (deleteBtn) {
     deleteBtn.hidden  = false;
     deleteBtn.onclick = () => confirmDelete(item);
@@ -556,13 +559,13 @@ async function showDetail(item) {
   // WHY: renderInbox updates selection highlight; re-show detail+hide inbox after
   // because setState(DETAIL) hides inbox but renderInbox would show it again
   renderInbox(_currentItems, item.id);
-  document.getElementById('detail-panel').hidden = false;
-  document.getElementById('inbox').hidden        = true;
+  (document.getElementById('detail-panel') as HTMLElement).hidden = false;
+  (document.getElementById('inbox') as HTMLElement).hidden        = true;
 }
 
-function confirmDelete(item) {
-  const actions  = document.getElementById('detail-actions');
-  const deleteBtn = document.getElementById('btn-delete');
+function confirmDelete(item: CaptureItem) {
+  const actions  = document.getElementById('detail-actions') as HTMLElement;
+  const deleteBtn = document.getElementById('btn-delete') as HTMLElement;
   deleteBtn.hidden = true;
 
   const confirm  = document.createElement('div');
@@ -599,13 +602,13 @@ function confirmDelete(item) {
 // WHY: when items span multiple schemas, show a schema selection modal before
 // downloading — avoids silently exporting schemas the user didn't intend to include.
 // Single-schema sets skip the modal entirely (EXPORT-SCHEMA-MODAL-SINGLE constraint).
-function _showSchemaExportModal(items, onExport) {
+function _showSchemaExportModal(items: CaptureItem[], onExport: (items: CaptureItem[]) => void) {
   // Group items by schema_name for display and filtering
-  const groups = new Map();
+  const groups = new Map<string, CaptureItem[]>();
   for (const item of items) {
     const name = item.schema_name || 'Default';
     if (!groups.has(name)) groups.set(name, []);
-    groups.get(name).push(item);
+    groups.get(name)!.push(item);
   }
 
   // WHY: single schema — no point showing selection UI; export immediately
@@ -642,7 +645,7 @@ function _showSchemaExportModal(items, onExport) {
   list.appendChild(selectAllRow);
 
   // Schema rows
-  const schemaCheckboxes = [];
+  const schemaCheckboxes: HTMLInputElement[] = [];
   for (const [name, groupItems] of groups) {
     const row = document.createElement('div');
     row.className = 'export-modal-schema-row';
@@ -723,7 +726,7 @@ async function _refreshSchemaSelect() {
 async function init() {
   // Operator name
   const opResult = await new Promise(resolve => chrome.storage.local.get('operator_name', resolve));
-  const opName   = opResult.operator_name || '';
+  const opName   = (opResult as Record<string, string>).operator_name || '';
   const opDisplay = document.getElementById('operator-name-display');
   if (opDisplay) opDisplay.textContent = opName;
   setupOperatorInlineEdit();
@@ -735,7 +738,7 @@ async function init() {
   }
 
   // Check for pending pick result from selection assist
-  const pending = await checkAndClearPickResult();
+  const pending = await checkAndClearPickResult() as { pickResult: PickResult; pickPending: PickPending } | null;
   const items   = await loadInbox();
   _currentItems = items;
 
@@ -745,8 +748,8 @@ async function init() {
   if (pending) {
     const { pickResult, pickPending } = pending;
     if (pickPending?.itemId && pickResult?.value) {
-      const stored = await new Promise(resolve =>
-        chrome.storage.local.get(['pick_pending_item'], r => resolve(r.pick_pending_item ?? null)));
+      const stored = await new Promise<PickPendingItem | null>(resolve =>
+        chrome.storage.local.get(['pick_pending_item'], r => resolve((r.pick_pending_item ?? null) as PickPendingItem | null)));
       if (stored) chrome.storage.local.remove('pick_pending_item');
       const field = pickPending.field;
       const DIRECT_PICK = ['title', 'url', 'source', 'author', 'content'];
@@ -757,7 +760,7 @@ async function init() {
         const item = _currentItems.find(i => i.id === pickPending.itemId);
         if (item && field) {
           if (DIRECT_PICK.includes(field)) {
-            item[field] = pickResult.value;
+            (item as unknown as Record<string, unknown>)[field] = pickResult.value;
           } else if (field === 'article_date') {
             const norm = normalizeDate(pickResult.value);
             item.article_date = (!norm.failed && norm.iso !== null)
@@ -774,7 +777,7 @@ async function init() {
         if (_pendingItem && field) {
           let _pickStatusShown = false;
           if (DIRECT_PICK.includes(field)) {
-            _pendingItem[field] = pickResult.value;
+            (_pendingItem as unknown as Record<string, unknown>)[field] = pickResult.value;
           } else if (field === 'article_date') {
             // WHY: normalize picked date text; fall back to raw on parse failure per Step 4 spec
             const norm = normalizeDate(pickResult.value);
@@ -797,54 +800,54 @@ async function init() {
   // ── Button wiring ──────────────────────────────────────────────────────
 
   // WHY: context-bar schema select — changing active schema determines which columns are used on next capture
-  document.getElementById('context-schema-select').addEventListener('change', async e => {
-    await SchemaStore.setActiveSchema(e.target.value);
+  (document.getElementById('context-schema-select') as HTMLElement).addEventListener('change', async e => {
+    await SchemaStore.setActiveSchema((e.target as HTMLSelectElement).value);
   });
 
   // WHY: captureCurrentTab callback — showPreview is popup.js state mutator; avoid circular import
-  document.getElementById('btn-capture').addEventListener('click', () => captureCurrentTab(showPreview));
+  (document.getElementById('btn-capture') as HTMLElement).addEventListener('click', () => captureCurrentTab(showPreview as unknown as Parameters<typeof captureCurrentTab>[0]));
 
-  document.getElementById('btn-export-all').addEventListener('click', () => {
+  (document.getElementById('btn-export-all') as HTMLElement).addEventListener('click', () => {
     _showSchemaExportModal(_currentItems, exportItems);
   });
 
-  document.getElementById('btn-export-selected').addEventListener('click', () => {
-    const checked = [...document.querySelectorAll('#inbox input[type=checkbox]:checked')]
+  (document.getElementById('btn-export-selected') as HTMLElement).addEventListener('click', () => {
+    const checked = ([...document.querySelectorAll('#inbox input[type=checkbox]:checked')]
       .map(cb => cb.closest('.inbox-item'))
-      .filter(Boolean)
+      .filter(Boolean) as HTMLElement[])
       .map(row => _currentItems.find(i => i.id === row.dataset.id))
-      .filter(Boolean);
+      .filter(Boolean) as CaptureItem[];
     _showSchemaExportModal(checked, exportItems);
   });
 
   // WHY: openSettings callback — setState owned by popup.js; direct call avoided to prevent circular import
-  document.getElementById('btn-settings').addEventListener('click', () => openSettings(setState));
+  (document.getElementById('btn-settings') as HTMLElement).addEventListener('click', () => openSettings(setState));
 
   // WHY: openSchemaEditor callback injection — setState + onSaved owned by popup.js; prevents circular import
-  document.getElementById('btn-customize-schema').addEventListener('click', () => {
+  (document.getElementById('btn-customize-schema') as HTMLElement).addEventListener('click', () => {
     openSchemaEditor(setState, () => setState(STATE.SETTINGS));
   });
 
   // WHY: ⊕ button triggers folder selection → CSV merge flow.
   // Callback injection: openMerge receives setState for FSM control.
-  document.getElementById('btn-merge').addEventListener('click', () => openMerge(setState));
-  document.getElementById('btn-merge-cancel').addEventListener('click', () => {
+  (document.getElementById('btn-merge') as HTMLElement).addEventListener('click', () => openMerge(setState));
+  (document.getElementById('btn-merge-cancel') as HTMLElement).addEventListener('click', () => {
     setState(STATE.INBOX);
     renderInbox(_currentItems, _selectedId);
   });
 
-  document.getElementById('btn-save').addEventListener('click', savePreviewItem);
-  document.getElementById('btn-discard').addEventListener('click', discardPreview);
+  (document.getElementById('btn-save') as HTMLElement).addEventListener('click', savePreviewItem);
+  (document.getElementById('btn-discard') as HTMLElement).addEventListener('click', discardPreview);
 
-  document.getElementById('btn-close-detail').addEventListener('click', () => {
+  (document.getElementById('btn-close-detail') as HTMLElement).addEventListener('click', () => {
     _selectedId = null;
     setState(STATE.INBOX);
     renderInbox(_currentItems, null);
   });
 
   // WHY: saveSettings callbacks — setState + renderInbox owned by popup.js; closure preserves _currentItems/_selectedId at call time
-  document.getElementById('btn-settings-save').addEventListener('click', () => saveSettings(setState, () => renderInbox(_currentItems, _selectedId)));
-  document.getElementById('btn-settings-cancel').addEventListener('click', () => {
+  (document.getElementById('btn-settings-save') as HTMLElement).addEventListener('click', () => saveSettings(setState, () => renderInbox(_currentItems, _selectedId)));
+  (document.getElementById('btn-settings-cancel') as HTMLElement).addEventListener('click', () => {
     setState(STATE.INBOX);
     renderInbox(_currentItems, _selectedId);
   });
@@ -854,22 +857,22 @@ async function init() {
   // article_date input is rendered by buildPreviewField(); avoids capturing a null ref
   // at init time. applyDateNormalize() uses id="prev-published" and id="date-hint" which
   // buildPreviewField() assigns to the article_date input and its hint span.
-  const _previewFieldsEl = document.getElementById('preview-fields');
+  const _previewFieldsEl = document.getElementById('preview-fields') as HTMLElement;
 
   _previewFieldsEl.addEventListener('keydown', e => {
-    if (e.target.id !== 'prev-published') return;
+    if ((e.target as HTMLElement).id !== 'prev-published') return;
     if (e.key === 'Enter') {
       e.preventDefault();
       _dateParseRetry = applyDateNormalize(_pendingItem, _dateParseRetry);
     }
   });
   _previewFieldsEl.addEventListener('blur', e => {
-    if (e.target.id !== 'prev-published') return;
+    if ((e.target as HTMLElement).id !== 'prev-published') return;
     // blur: normalize if possible, silently accept raw on failure
     _dateParseRetry = applyDateNormalize(_pendingItem, false);
   }, true); // WHY: useCapture=true because blur does not bubble
   _previewFieldsEl.addEventListener('input', e => {
-    if (e.target.id !== 'prev-published') return;
+    if ((e.target as HTMLElement).id !== 'prev-published') return;
     // WHY: user editing after a failed parse — reset retry flag and clear warning
     _dateParseRetry = false;
     const hint = document.getElementById('date-hint');
@@ -879,13 +882,13 @@ async function init() {
   // WHY: event delegation on #preview-fields — pick buttons are dynamically rendered by
   // buildPreviewField(); delegating here avoids re-wiring on each showPreview() call.
   _previewFieldsEl.addEventListener('click', e => {
-    if (!e.target.classList.contains('btn-pick')) return;
-    const field = e.target.dataset.pickSource;
+    if (!(e.target as HTMLElement).classList.contains('btn-pick')) return;
+    const field = (e.target as HTMLElement).dataset.pickSource;
     if (!field || !_pendingItem) return;
     // WHY: persist _pendingItem before popup closes — on re-open, init() restores from
     // pick_pending_item and applies the pick result (chrome.storage round-trip)
     chrome.storage.local.set({ pick_pending_item: _pendingItem }, () => {
-      sendPickMode(_pendingItem.id, field);
+      sendPickMode(_pendingItem!.id, field);
       window.close();
     });
   });
@@ -893,18 +896,18 @@ async function init() {
   // WHY: auto-save all field edits on blur in Detail view — no explicit save button.
   // Delegation on #detail-fields covers both standard and custom fields.
   // useCapture=true because blur does not bubble.
-  document.getElementById('detail-fields').addEventListener('blur', async (e) => {
-    const el = e.target;
+  (document.getElementById('detail-fields') as HTMLElement).addEventListener('blur', async (e) => {
+    const el = e.target as HTMLInputElement | HTMLTextAreaElement;
     if (!el.classList.contains('detail-input') && !el.classList.contains('detail-textarea')) return;
     const colSource = el.dataset.source;   // '' for custom columns
-    const colName   = el.dataset.colName;
+    const colName   = el.dataset.colName!;
     // WHY: content kept verbatim; all other fields trimmed (same rule as savePreviewItem)
     const val = colSource === 'content' ? el.value : el.value.trim();
     const item = _currentItems.find(i => i.id === _selectedId);
     if (!item) return;
     if (colSource) {
       // Standard field: write directly onto item
-      item[colSource] = val;
+      (item as unknown as Record<string, unknown>)[colSource] = val;
     } else {
       // Custom field: key by col.name (consistent with savePreviewItem)
       if (!item.custom_fields) item.custom_fields = {};
@@ -922,9 +925,9 @@ async function init() {
   // WHY: event delegation on #detail-fields — pick buttons rendered by buildDetailField();
   // delegating avoids re-wiring on each showDetail() call.
   // _pickContext='detail' flag allows init() to route the pick result to showDetail() on re-open.
-  document.getElementById('detail-fields').addEventListener('click', e => {
-    if (!e.target.classList.contains('btn-pick')) return;
-    const field = e.target.dataset.pickSource;
+  (document.getElementById('detail-fields') as HTMLElement).addEventListener('click', e => {
+    if (!(e.target as HTMLElement).classList.contains('btn-pick')) return;
+    const field = (e.target as HTMLElement).dataset.pickSource;
     const item  = _currentItems.find(i => i.id === _selectedId);
     if (!field || !item) return;
     chrome.storage.local.set({ pick_pending_item: { ...item, _pickContext: 'detail' } }, () => {

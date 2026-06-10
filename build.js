@@ -4,6 +4,13 @@ const path = require('path');
 
 const watch = process.argv.includes('--watch');
 
+// During the JS→TS migration an entry may be either .ts or .js. Resolve whichever
+// exists so incremental renames don't require touching this file each time.
+// esbuild strips the types and emits the same .js regardless of source extension.
+function resolveEntry(base) {
+  return fs.existsSync(`${base}.ts`) ? `${base}.ts` : `${base}.js`;
+}
+
 const shared = {
   bundle: true,
   sourcemap: false,
@@ -25,17 +32,17 @@ function copyStatic() {
 async function build() {
   await esbuild.build({
     ...shared,
-    entryPoints: ['src/content.js'],
+    entryPoints: [resolveEntry('src/content')],
     outfile: 'dist/content.js',
   });
   await esbuild.build({
     ...shared,
-    entryPoints: ['src/popup/popup.js'],
+    entryPoints: [resolveEntry('src/popup/popup')],
     outfile: 'dist/popup/popup.js',
   });
   await esbuild.build({
     ...shared,
-    entryPoints: ['src/background.js'],
+    entryPoints: [resolveEntry('src/background')],
     outfile: 'dist/background.js',
   });
   copyStatic();

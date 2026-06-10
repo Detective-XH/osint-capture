@@ -4,13 +4,23 @@
   "private": true,
   "scripts": {
     "build": "node build.js",
-    "watch": "node build.js --watch"
+    "watch": "node build.js --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.{ts,js,css,html}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,js}\""
   },
   "dependencies": {
     "defuddle": "^0.12.0"
   },
   "devDependencies": {
+    "@types/chrome": "^0.1.43",
     "esbuild": "^0.20.0",
-    "sharp": "^0.33.0"
+    "eslint": "^10.4.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.4",
+    "sharp": "^0.33.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.0"
   }
 }
