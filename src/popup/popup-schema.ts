@@ -287,7 +287,7 @@ async function _reloadList(selectId: string | null): Promise<void> {
 // WHY: importSchema now auto-suffixes on name collision — no prompt needed; use
 // result.name (the final stored name) to locate the schema after reload
 // (EXT-UI-RESTRUCTURE Step 1c)
-async function _doImport(parsed: any): Promise<void> {
+async function _doImport(parsed: unknown): Promise<void> {
   const result = await importSchema(parsed);
   if (result.success) {
     _schemas = await getAllSchemas();
@@ -336,8 +336,8 @@ export async function openSchemaEditor(setState: (s: string) => void, onSaved: (
       await _reloadList(newSchema.id);
       await setActiveSchema(newSchema.id);
       showStatus('Schema created ✓');
-    } catch (e: any) {
-      showStatus(e.message || 'Could not create schema');
+    } catch (e: unknown) {
+      showStatus((e as Error).message || 'Could not create schema');
     }
   };
 
@@ -348,8 +348,8 @@ export async function openSchemaEditor(setState: (s: string) => void, onSaved: (
       await setActiveSchema(copy.id);
       await _reloadList(copy.id);
       showStatus('Schema duplicated ✓');
-    } catch (e: any) {
-      showStatus(e.message || 'Could not duplicate schema');
+    } catch (e: unknown) {
+      showStatus((e as Error).message || 'Could not duplicate schema');
     }
   };
 
@@ -363,8 +363,8 @@ export async function openSchemaEditor(setState: (s: string) => void, onSaved: (
       const active = await getActiveSchema();
       await _reloadList(active.id);
       showStatus('Schema deleted');
-    } catch (e: any) {
-      showStatus(e.message || 'Could not delete schema');
+    } catch (e: unknown) {
+      showStatus((e as Error).message || 'Could not delete schema');
     }
   };
 
@@ -399,8 +399,8 @@ export async function openSchemaEditor(setState: (s: string) => void, onSaved: (
         saveAs:   false,
       });
       showStatus('Schema exported ✓');
-    } catch (e: any) {
-      showStatus(e.message || 'Export failed');
+    } catch (e: unknown) {
+      showStatus((e as Error).message || 'Export failed');
     }
   };
 
@@ -419,9 +419,9 @@ export async function openSchemaEditor(setState: (s: string) => void, onSaved: (
       if (saved) nameInput.value = saved.name;
       _renderSchemaSelect();
       showStatus('Schema renamed ✓');
-    } catch (e: any) {
+    } catch (e: unknown) {
       nameInput.value = schema.name; // WHY: revert on error (e.g. duplicate name)
-      showStatus(e.message || 'Could not rename schema');
+      showStatus((e as Error).message || 'Could not rename schema');
     }
   };
 
@@ -450,8 +450,8 @@ export async function openSchemaEditor(setState: (s: string) => void, onSaved: (
       await saveSchema({ ...schema, columns });
       _schemas = await getAllSchemas();
       showStatus('Columns saved ✓');
-    } catch (e: any) {
-      showStatus(e.message || 'Could not save columns');
+    } catch (e: unknown) {
+      showStatus((e as Error).message || 'Could not save columns');
     }
   };
 

@@ -27,7 +27,11 @@ export default tseslint.config(
       globals: { chrome: 'readonly' },
     },
     rules: {
-      complexity: ['warn', 15], // gocyclo analogue
+      // gocyclo analogue. 20 (not the stricter default 15): this codebase has inherently
+      // branchy dispatch/UI/init functions (date-format dispatch, field builders, popup init
+      // wiring) where mechanical splitting adds indirection without reducing real complexity.
+      // Functions still over 20 carry a justified inline disable explaining the intrinsic cost.
+      complexity: ['warn', 20],
       // Migration stance: `any` from the JS→TS overlay is visible debt, not a hard
       // failure — tighten in the follow-up (typed ClearURLs provider + storage shapes).
       '@typescript-eslint/no-explicit-any': 'warn',

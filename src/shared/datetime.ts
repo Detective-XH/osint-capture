@@ -1,0 +1,95 @@
+/**
+ * @module shared/datetime
+ * Shared date/time helpers — single source of truth for the timestamp + date-normalization
+ * logic that was previously copied (with cosmetic drift) into background.ts, content.ts, and
+ * popup-utils.ts. Canonical version = the popup-utils copy (the most readable of the set; all
+ * copies were proven runtime-equivalent before consolidation — see plans/TS-MIGRATION.md).
+ */
+
+export function localISOWithOffset(): string {
+  const now    = new Date();
+  const offset = -now.getTimezoneOffset();
+  const sign   = offset >= 0 ? '+' : '-';
+  const pad    = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+  return now.toISOString().slice(0, 19) + sign + pad(offset / 60) + ':' + pad(offset % 60);
+}
+
+// WHY: article_date arrives in 12+ formats from Chinese/English military sites, Defuddle
+// extraction, and manual entry. All timezone-naive inputs default to UTC (Z) per EXT-DATE-NORMALIZE.
+// Supported: ISO passthrough, YYYY-MM-DD, YYYY/MM/DD HH:MM, YYYY/MM/DD, 14/12/8-digit compact,
+// Chinese date (YYYY年M月D日 [HH:MM]), English month names (YYYY Mon DD, Mon DD YYYY).
+export function normalizeDate(input: string): { iso: string | null; failed: boolean } {
+  if (!input || !input.trim()) return { iso: null, failed: false };
+  const s = input.trim();
+  if (s.toLowerCase() === 'na') return { iso: null, failed: false };
+
+  // Pass-through: already ISO with timezone offset or Z
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(s)) {
+    return { iso: s, failed: false };
+  }
+  // YYYY-MM-DD (date-only ISO, append T00:00:00Z)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return _validateISO(s + 'T00:00:00Z');
+  }
+  // YYYY/MM/DD HH:MM
+  const slashDateTime = s.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/);
+  if (slashDateTime) {
+    return _validateISO(`${slashDateTime[1]}-${slashDateTime[2]}-${slashDateTime[3]}T${slashDateTime[4]}:${slashDateTime[5]}:00Z`);
+  }
+  // YYYY/MM/DD
+  const slashDate = s.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (slashDate) {
+    return _validateISO(`${slashDate[1]}-${slashDate[2]}-${slashDate[3]}T00:00:00Z`);
+  }
+  // 14-digit compact: YYYYMMDDHHMMSS
+  const d14 = s.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
+  if (d14) {
+    return _validateISO(`${d14[1]}-${d14[2]}-${d14[3]}T${d14[4]}:${d14[5]}:${d14[6]}Z`);
+  }
+  // 12-digit compact: YYYYMMDDHHMM (SS defaults to 00)
+  const d12 = s.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/);
+  if (d12) {
+    return _validateISO(`${d12[1]}-${d12[2]}-${d12[3]}T${d12[4]}:${d12[5]}:00Z`);
+  }
+  // 8-digit compact: YYYYMMDD
+  const d8 = s.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (d8) {
+    return _validateISO(`${d8[1]}-${d8[2]}-${d8[3]}T00:00:00Z`);
+  }
+  // Chinese date: YYYY年M月D日 [HH:MM] (optional time)
+  const cn = s.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s+(\d{2}):(\d{2}))?$/);
+  if (cn) {
+    const mm = String(cn[2]).padStart(2, '0');
+    const dd = String(cn[3]).padStart(2, '0');
+    const time = cn[4] ? `${cn[4]}:${cn[5]}:00` : '00:00:00';
+    return _validateISO(`${cn[1]}-${mm}-${dd}T${time}Z`);
+  }
+  // English month names — month map (first 3 chars, case-insensitive)
+  const MONTHS: Record<string, number> = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+  // "YYYY Mon DD [HH:MM]"
+  const engA = s.match(/^(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})(?:\s+(\d{2}):(\d{2}))?$/);
+  if (engA) {
+    const mo = MONTHS[engA[2].substring(0, 3).toLowerCase()];
+    if (mo) {
+      const mm = String(mo).padStart(2, '0'), dd = String(engA[3]).padStart(2, '0');
+      const time = engA[4] ? `${engA[4]}:${engA[5]}:00` : '00:00:00';
+      return _validateISO(`${engA[1]}-${mm}-${dd}T${time}Z`);
+    }
+  }
+  // "Mon DD, YYYY" or "Month DD, YYYY"
+  const engB = s.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
+  if (engB) {
+    const mo = MONTHS[engB[1].substring(0, 3).toLowerCase()];
+    if (mo) {
+      const mm = String(mo).padStart(2, '0'), dd = String(engB[2]).padStart(2, '0');
+      return _validateISO(`${engB[3]}-${mm}-${dd}T00:00:00Z`);
+    }
+  }
+  return { iso: null, failed: true };
+}
+
+// WHY: validates the constructed ISO string to catch impossible dates (e.g. month 13, day 32)
+function _validateISO(iso: string): { iso: string | null; failed: boolean } {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? { iso: null, failed: true } : { iso, failed: false };
+}

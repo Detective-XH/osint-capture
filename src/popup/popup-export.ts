@@ -1,7 +1,7 @@
 /**
  * @module popup-export
  * @responsibility Per-schema export (JSON and/or CSV), schema selection support, file download trigger, export button state management
- * @owns Schema 1.2 envelope structure; CSV generation; schema column mapping (display name → item field); per-schema grouping; fallback schema for deleted schemas; storage quota warning; _csvEscape; _downloadJSON; _downloadCSV; download filename format; chrome.downloads.download call
+ * @owns CSV generation; schema column mapping (display name → item field); per-schema grouping; fallback schema for deleted schemas; storage quota warning; _downloadCSV; download filename format; chrome.downloads.download call
  * @not-owns Capture items storage; inbox rendering; state machine; schema editor (popup-schema.js); schema selection UI (popup.js)
  * @depends-on popup-utils.js (showStatus, localTimestamp, localISOWithOffset), popup-schema-store.js (getSchemaById)
  * @depended-by popup.js (init wiring)
@@ -11,9 +11,10 @@
  * @known-constraints FALLBACK-SCHEMA-DUPLICATED: _buildFallbackSchema() is a private copy, not imported from popup.js — export variant adds name field for filename generation; importing would create a circular dep or require a new util module
  */
 
-import type { CaptureItem, Schema, Column, Settings, ExportFormat, CsvDelimiter, ExportEnvelope } from '../types';
-import { showStatus, localTimestamp, localISOWithOffset } from './popup-utils.js';
+import type { CaptureItem, Schema, Column, Settings, CsvDelimiter } from '../types';
+import { showStatus, localTimestamp } from './popup-utils.js';
 import { getSchemaById } from './popup-schema-store.js';
+import { csvEscape } from '../shared/csv';
 // WHY: getExportSchema removed — Step 8 resolves schema per item group via getSchemaById
 
 // ── Private helpers ─────────────────────────────────────────────────────────
@@ -59,11 +60,10 @@ export async function exportItems(items: CaptureItem[]) {
   // WHY: load settings only — schema resolved per group below, not once globally
   const settings = await new Promise<Partial<Settings>>(resolve =>
     chrome.storage.local.get(
-      ['operator_name', 'download_subfolder', 'export_format', 'csv_delimiter'],
+      ['operator_name', 'download_subfolder', 'csv_delimiter'],
       resolve as (items: { [key: string]: unknown }) => void)) as Partial<Settings>;
 
-  const format    = settings.export_format    || 'json' as ExportFormat;
-  const delimiter = settings.csv_delimiter    || 'comma' as CsvDelimiter;
+  const delimiter = settings.csv_delimiter || 'comma' as CsvDelimiter;
   const operator  = settings.operator_name    || '';
   const subfolder = (settings.download_subfolder || 'osint-captures').replace(/[^a-z0-9_\-]/gi, '-');
   const timestamp = localTimestamp();
@@ -87,19 +87,13 @@ export async function exportItems(items: CaptureItem[]) {
     // WHY: omit trailing underscore+segment when operator is blank — avoids ugly double-dash filenames
     const fileStem = operatorSafe ? `${timestamp}_${schemaSafe}_${operatorSafe}` : `${timestamp}_${schemaSafe}`;
 
-    if (format === 'json' || format === 'both') {
-      _downloadJSON(groupItems, schema, operator, subfolder, fileStem);
-    }
-    if (format === 'csv' || format === 'both') {
-      _downloadCSV(groupItems, schema, operator, delimiter, subfolder, fileStem);
-    }
+    _downloadCSV(groupItems, schema, operator, delimiter, subfolder, fileStem);
     totalExported += groupItems.length;
   }
 
   const schemaCount = groups.size;
-  const label = format === 'both' ? 'JSON + CSV' : format.toUpperCase();
   const schemaLabel = schemaCount > 1 ? ` across ${schemaCount} schemas` : '';
-  showStatus(`Exported ${totalExported} item${totalExported !== 1 ? 's' : ''}${schemaLabel} as ${label}`);
+  showStatus(`Exported ${totalExported} item${totalExported !== 1 ? 's' : ''}${schemaLabel} as CSV`);
 
   _checkStorageQuota();
 }
@@ -134,26 +128,6 @@ function _mapItem(item: CaptureItem, schema: Schema, operator: string): Record<s
   return mapped;
 }
 
-function _downloadJSON(items: CaptureItem[], schema: Schema, operator: string, subfolder: string, fileStem: string) {
-  const mappedItems = items.map((item: CaptureItem) => _mapItem(item, schema, operator));
-
-  const envelope: ExportEnvelope = {
-    schema_version: '1.2',
-    schema_name:    schema.name,  // WHY: top-level for quick identification without parsing export_schema
-    exported_at:    localISOWithOffset(),
-    exported_by:    operator,
-    export_schema:  schema,
-    items:          mappedItems,
-  };
-
-  const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
-  chrome.downloads.download({
-    url:      URL.createObjectURL(blob),
-    filename: `${subfolder}/${fileStem}.json`,
-    saveAs:   false,
-  });
-}
-
 function _downloadCSV(items: CaptureItem[], schema: Schema, operator: string, delimiter: CsvDelimiter, subfolder: string, fileStem: string) {
   const sep = delimiter === 'tab' ? '\t' : ',';
 
@@ -161,14 +135,14 @@ function _downloadCSV(items: CaptureItem[], schema: Schema, operator: string, de
   // CJK characters and other non-ASCII content without encoding prompt
   const BOM = '\uFEFF';
 
-  const headers = schema.columns.map((col: Column) => _csvEscape(col.name, sep));
+  const headers = schema.columns.map((col: Column) => csvEscape(col.name, sep));
 
   const rows = items.map((item: CaptureItem) => {
     const mapped = _mapItem(item, schema, operator);
     return schema.columns.map((col: Column) => {
       const value = mapped[col.name];
       // WHY: convert null/undefined to empty string — CSV has no null representation
-      return _csvEscape(value == null ? '' : String(value), sep);
+      return csvEscape(value == null ? '' : String(value), sep);
     }).join(sep);
   });
 
@@ -183,13 +157,4 @@ function _downloadCSV(items: CaptureItem[], schema: Schema, operator: string, de
     filename: `${subfolder}/${fileStem}.${ext}`,
     saveAs:   false,
   });
-}
-
-// WHY: CSV escaping — wrap in quotes if value contains the delimiter, double-quotes,
-// or newlines; double any existing quotes inside the value (RFC 4180)
-function _csvEscape(value: string, sep: string): string {
-  if (value.includes(sep) || value.includes('"') || value.includes('\n') || value.includes('\r')) {
-    return '"' + value.replace(/"/g, '""') + '"';
-  }
-  return value;
 }

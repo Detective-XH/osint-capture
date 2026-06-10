@@ -54,13 +54,11 @@ export interface CaptureItem {
   custom_fields?: Record<string, string>;
 }
 
-export type ExportFormat = 'json' | 'csv' | 'both';
 export type CsvDelimiter = 'comma' | 'tab';
 
 export interface Settings {
   operator_name: string;
   download_subfolder: string;
-  export_format: ExportFormat;
   csv_delimiter: CsvDelimiter;
 }
 
@@ -89,7 +87,6 @@ export interface StorageShape {
   schemas: SchemaStorage;
   operator_name: string;
   download_subfolder: string;
-  export_format: ExportFormat;
   csv_delimiter: CsvDelimiter;
   pick_pending: PickPending;
   pick_result: PickResult;
@@ -122,14 +119,4 @@ export interface CapturePageResponse {
 /** Response to HASH_CONTENT from the background worker. */
 export interface HashContentResponse {
   hash: string | null;
-}
-
-/** The JSON export envelope (popup-export). */
-export interface ExportEnvelope {
-  schema_version: string;
-  schema_name: string;
-  exported_at: string;
-  exported_by: string;
-  export_schema: Schema;
-  items: Array<Record<string, unknown>>;
 }
