@@ -1,7 +1,7 @@
 # OSINT Capture
 
 A Chrome extension (Manifest V3) for OSINT analysts to capture web pages as
-structured, schema-defined records and export them as JSON or CSV.
+structured, schema-defined records and export them as CSV / TSV.
 
 Built for evidence collection: every capture is URL-cleaned, content-hashed, and
 timestamped, then organized under analyst-defined schemas for consistent,
@@ -19,7 +19,7 @@ OSINT Capture turns any web page into a structured record:
   right-click menu.
 - **Structure** captures with custom schemas (column templates) so every export
   has consistent fields.
-- **Export** to JSON or CSV (UTF-8 BOM, RFC 4180) for downstream analysis.
+- **Export** to CSV / TSV (UTF-8 BOM, RFC 4180) for downstream analysis.
 - **Merge** CSV exports from multiple analysts into one deduplicated,
   conflict-resolved dataset.
 
@@ -54,8 +54,7 @@ OSINT Capture turns any web page into a structured record:
 
 ### Export
 
-- **JSON** (versioned envelope with schema metadata) or **CSV / TSV** (UTF-8 BOM,
-  RFC 4180 quoting, comma or tab delimiter).
+- **CSV / TSV** — UTF-8 BOM, RFC 4180 quoting, comma or tab delimiter (configurable).
 - **Export all** or **export selected**; captures are grouped per schema into
   separate files.
 - Files download to `Downloads/<subfolder>/` named
@@ -70,7 +69,7 @@ OSINT Capture turns any web page into a structured record:
 
 ### Settings
 
-- Operator name, downloads subfolder, default export format, CSV delimiter.
+- Operator name, downloads subfolder, CSV delimiter (comma or tab).
 
 ---
 
