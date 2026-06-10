@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "OSINT Capture",
-  "version": "0.1.2",
-  "description": "Capture web pages as structured OSINT records (JSON/CSV).",
+  "version": "0.1.3",
+  "description": "Capture web pages as structured OSINT records (CSV).",
   "permissions": [
     "activeTab",
     "scripting",
