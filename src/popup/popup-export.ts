@@ -28,8 +28,17 @@ function _sanitizeFilename(str: string): string {
 // WHY: mirrors _buildFallbackSchema in popup.js; adds `name` field so filename
 // generation works for captures whose schema was deleted since capture time
 function _buildFallbackSchema(item: CaptureItem): Schema {
-  const STD = ['title', 'url', 'source', 'author', 'captured_at', 'article_date', 'content', 'content_hash'];
-  const cols: Column[] = STD.map(s => ({ id: s, name: s.replace(/_/g, ' '), source: s }));
+  const STD = [
+    'title',
+    'url',
+    'source',
+    'author',
+    'captured_at',
+    'article_date',
+    'content',
+    'content_hash',
+  ];
+  const cols: Column[] = STD.map((s) => ({ id: s, name: s.replace(/_/g, ' '), source: s }));
   for (const key of Object.keys(item.custom_fields || {}))
     cols.push({ id: key, name: key, source: null });
   return { name: item.schema_name || 'Default', columns: cols } as Schema;
@@ -38,7 +47,7 @@ function _buildFallbackSchema(item: CaptureItem): Schema {
 // WHY: warn after export if storage is getting full; > 80% of 5 MB (chrome default)
 // triggers visible warning — user must act manually (no auto-delete)
 function _checkStorageQuota() {
-  chrome.storage.local.getBytesInUse(null, bytes => {
+  chrome.storage.local.getBytesInUse(null, (bytes) => {
     const quota = chrome.storage.local.QUOTA_BYTES || 5242880;
     if (bytes / quota > 0.8)
       showStatus('Storage is getting full. Consider clearing exported captures.', true);
@@ -58,14 +67,19 @@ export async function exportItems(items: CaptureItem[]) {
   }
 
   // WHY: load settings only — schema resolved per group below, not once globally
-  const settings = await new Promise<Partial<Settings>>(resolve =>
+  const settings = (await new Promise<Partial<Settings>>((resolve) =>
     chrome.storage.local.get(
       ['operator_name', 'download_subfolder', 'csv_delimiter'],
-      resolve as (items: { [key: string]: unknown }) => void)) as Partial<Settings>;
+      resolve as (items: { [key: string]: unknown }) => void,
+    ),
+  )) as Partial<Settings>;
 
-  const delimiter = settings.csv_delimiter || 'comma' as CsvDelimiter;
-  const operator  = settings.operator_name    || '';
-  const subfolder = (settings.download_subfolder || 'osint-captures').replace(/[^a-z0-9_\-]/gi, '-');
+  const delimiter = settings.csv_delimiter || ('comma' as CsvDelimiter);
+  const operator = settings.operator_name || '';
+  const subfolder = (settings.download_subfolder || 'osint-captures').replace(
+    /[^a-z0-9_\-]/gi,
+    '-',
+  );
   const timestamp = localTimestamp();
 
   // WHY: group by schema_id so each schema group gets its own file; captures without
@@ -82,10 +96,12 @@ export async function exportItems(items: CaptureItem[]) {
     // WHY: getSchemaById returns null for deleted schemas — fall back to synthetic
     // schema so captured data is never silently lost on export
     const schema = (await getSchemaById(schemaId)) || _buildFallbackSchema(groupItems[0]);
-    const schemaSafe   = _sanitizeFilename(schema.name);
+    const schemaSafe = _sanitizeFilename(schema.name);
     const operatorSafe = _sanitizeFilename(operator);
     // WHY: omit trailing underscore+segment when operator is blank — avoids ugly double-dash filenames
-    const fileStem = operatorSafe ? `${timestamp}_${schemaSafe}_${operatorSafe}` : `${timestamp}_${schemaSafe}`;
+    const fileStem = operatorSafe
+      ? `${timestamp}_${schemaSafe}_${operatorSafe}`
+      : `${timestamp}_${schemaSafe}`;
 
     _downloadCSV(groupItems, schema, operator, delimiter, subfolder, fileStem);
     totalExported += groupItems.length;
@@ -93,14 +109,16 @@ export async function exportItems(items: CaptureItem[]) {
 
   const schemaCount = groups.size;
   const schemaLabel = schemaCount > 1 ? ` across ${schemaCount} schemas` : '';
-  showStatus(`Exported ${totalExported} item${totalExported !== 1 ? 's' : ''}${schemaLabel} as CSV`);
+  showStatus(
+    `Exported ${totalExported} item${totalExported !== 1 ? 's' : ''}${schemaLabel} as CSV`,
+  );
 
   _checkStorageQuota();
 }
 
 export function updateExportSelectedBtn() {
   const checked = document.querySelectorAll('#inbox input[type=checkbox]:checked').length;
-  const btn     = document.getElementById('btn-export-selected') as HTMLButtonElement | null;
+  const btn = document.getElementById('btn-export-selected') as HTMLButtonElement | null;
   if (btn) btn.disabled = checked === 0;
 }
 
@@ -116,7 +134,9 @@ function _mapItem(item: CaptureItem, schema: Schema, operator: string): Record<s
     if (col.source === null) {
       // WHY: dual-read col.name first (current save format), then col.id (pre-Step-6 saves)
       // so exports work correctly regardless of which era captured the item
-      value = (item.custom_fields && (item.custom_fields[col.name] ?? item.custom_fields[col.id])) ?? null;
+      value =
+        (item.custom_fields && (item.custom_fields[col.name] ?? item.custom_fields[col.id])) ??
+        null;
     } else if (col.source === 'operator_name') {
       // WHY: operator_name is a session-level setting, not per-item — read from storage at export time
       value = operator || null;
@@ -128,7 +148,14 @@ function _mapItem(item: CaptureItem, schema: Schema, operator: string): Record<s
   return mapped;
 }
 
-function _downloadCSV(items: CaptureItem[], schema: Schema, operator: string, delimiter: CsvDelimiter, subfolder: string, fileStem: string) {
+function _downloadCSV(
+  items: CaptureItem[],
+  schema: Schema,
+  operator: string,
+  delimiter: CsvDelimiter,
+  subfolder: string,
+  fileStem: string,
+) {
   const sep = delimiter === 'tab' ? '\t' : ',';
 
   // WHY: UTF-8 BOM prefix ensures Excel and Google Sheets correctly interpret
@@ -139,11 +166,13 @@ function _downloadCSV(items: CaptureItem[], schema: Schema, operator: string, de
 
   const rows = items.map((item: CaptureItem) => {
     const mapped = _mapItem(item, schema, operator);
-    return schema.columns.map((col: Column) => {
-      const value = mapped[col.name];
-      // WHY: convert null/undefined to empty string — CSV has no null representation
-      return csvEscape(value == null ? '' : String(value), sep);
-    }).join(sep);
+    return schema.columns
+      .map((col: Column) => {
+        const value = mapped[col.name];
+        // WHY: convert null/undefined to empty string — CSV has no null representation
+        return csvEscape(value == null ? '' : String(value), sep);
+      })
+      .join(sep);
   });
 
   const csv = BOM + [headers.join(sep), ...rows].join('\r\n');
@@ -153,8 +182,8 @@ function _downloadCSV(items: CaptureItem[], schema: Schema, operator: string, de
   // file is tab-separated; comma-delimited uses .csv
   const ext = delimiter === 'tab' ? 'tsv' : 'csv';
   chrome.downloads.download({
-    url:      URL.createObjectURL(blob),
+    url: URL.createObjectURL(blob),
     filename: `${subfolder}/${fileStem}.${ext}`,
-    saveAs:   false,
+    saveAs: false,
   });
 }

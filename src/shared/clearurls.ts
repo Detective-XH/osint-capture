@@ -21,33 +21,54 @@ export async function loadCleanRules(): Promise<Record<string, ClearUrlsProvider
 
 export function cleanUrl(rawUrl: string, providers: Record<string, ClearUrlsProvider>): string {
   let parsed;
-  try { parsed = new URL(rawUrl); } catch { return rawUrl; }
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return rawUrl;
+  }
 
   for (const provider of Object.values(providers)) {
     // Check urlPattern match
     try {
       if (!new RegExp(provider.urlPattern, 'i').test(rawUrl)) continue;
-    } catch { continue; }
+    } catch {
+      continue;
+    }
 
     // Check exceptions — skip provider if any match
     const exceptions = provider.exceptions ?? [];
-    if (exceptions.some((ex: string) => { try { return new RegExp(ex, 'i').test(rawUrl); } catch { return false; } })) continue;
+    if (
+      exceptions.some((ex: string) => {
+        try {
+          return new RegExp(ex, 'i').test(rawUrl);
+        } catch {
+          return false;
+        }
+      })
+    )
+      continue;
 
     // Strip tracking query params matching any rule pattern
     const rules = provider.rules ?? [];
     for (const rule of rules) {
       let ruleRe;
-      try { ruleRe = new RegExp('^(?:' + rule + ')$', 'i'); } catch { continue; }
+      try {
+        ruleRe = new RegExp('^(?:' + rule + ')$', 'i');
+      } catch {
+        continue;
+      }
       for (const key of [...parsed.searchParams.keys()]) {
         if (ruleRe.test(key)) parsed.searchParams.delete(key);
       }
     }
 
     // Apply rawRules (path-level stripping)
-    for (const raw of (provider.rawRules ?? [])) {
+    for (const raw of provider.rawRules ?? []) {
       try {
         parsed.pathname = parsed.pathname.replace(new RegExp(raw, 'i'), '');
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
   }
 

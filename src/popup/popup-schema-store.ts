@@ -15,7 +15,7 @@ import type { Schema, Column, SchemaStorage, LegacyExportSchema } from '../types
 
 // WHY: single top-level key avoids partial-write races between schemas[] and active_schema_id
 const STORAGE_KEY = 'schemas';
-const LEGACY_KEY  = 'export_schema'; // WHY: actual key used by popup-schema.js (prompt says 'exportSchema' but code uses 'export_schema')
+const LEGACY_KEY = 'export_schema'; // WHY: actual key used by popup-schema.js (prompt says 'exportSchema' but code uses 'export_schema')
 
 // ── Default schema ──────────────────────────────────────────────────────────
 
@@ -24,17 +24,17 @@ const DEFAULT_SCHEMA_ID = '00000000-0000-0000-0000-000000000001';
 
 // WHY: fixed column UUIDs so custom_fields keys remain consistent for the Default schema
 const DEFAULT_SCHEMA: Schema = Object.freeze({
-  id:         DEFAULT_SCHEMA_ID,
-  name:       'Default',
+  id: DEFAULT_SCHEMA_ID,
+  name: 'Default',
   is_default: true,
   columns: [
-    { id: '00000000-0000-0000-0001-000000000001', name: 'Title',        source: 'title' },
-    { id: '00000000-0000-0000-0001-000000000002', name: 'URL',          source: 'url' },
-    { id: '00000000-0000-0000-0001-000000000003', name: 'Source',       source: 'source' },
-    { id: '00000000-0000-0000-0001-000000000004', name: 'Author',       source: 'author' },
-    { id: '00000000-0000-0000-0001-000000000005', name: 'Captured At',  source: 'captured_at' },
-    { id: '00000000-0000-0000-0001-000000000006', name: 'Published',    source: 'article_date' },
-    { id: '00000000-0000-0000-0001-000000000007', name: 'Content',      source: 'content' },
+    { id: '00000000-0000-0000-0001-000000000001', name: 'Title', source: 'title' },
+    { id: '00000000-0000-0000-0001-000000000002', name: 'URL', source: 'url' },
+    { id: '00000000-0000-0000-0001-000000000003', name: 'Source', source: 'source' },
+    { id: '00000000-0000-0000-0001-000000000004', name: 'Author', source: 'author' },
+    { id: '00000000-0000-0000-0001-000000000005', name: 'Captured At', source: 'captured_at' },
+    { id: '00000000-0000-0000-0001-000000000006', name: 'Published', source: 'article_date' },
+    { id: '00000000-0000-0000-0001-000000000007', name: 'Content', source: 'content' },
     { id: '00000000-0000-0000-0001-000000000008', name: 'Content Hash', source: 'content_hash' },
   ],
 });
@@ -44,28 +44,28 @@ const DEFAULT_SCHEMA: Schema = Object.freeze({
 // WHY: 7-column starting point for new schemas — covers standard OSINT capture fields without
 // the audit-only Content Hash column; display names chosen for analyst workflow, not raw field names
 const DEFAULT_NEW_SCHEMA_COLUMNS: Pick<Column, 'name' | 'source'>[] = [
-  { name: 'Title',        source: 'title' },
-  { name: 'URL',          source: 'url' },
-  { name: 'Source',       source: 'source' },
-  { name: 'Author',       source: 'author' },
+  { name: 'Title', source: 'title' },
+  { name: 'URL', source: 'url' },
+  { name: 'Source', source: 'source' },
+  { name: 'Author', source: 'author' },
   { name: 'Capture Time', source: 'captured_at' },
   { name: 'Publish Time', source: 'article_date' },
-  { name: 'Content',      source: 'content' },
+  { name: 'Content', source: 'content' },
 ];
 
 // ── Storage helpers ──────────────────────────────────────────────────────────
 
 // WHY: all reads go through _load() so callers never touch chrome.storage directly
 function _load(): Promise<SchemaStorage | null> {
-  return new Promise(resolve => {
-    chrome.storage.local.get(STORAGE_KEY, result => {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(STORAGE_KEY, (result) => {
       resolve((result[STORAGE_KEY] as SchemaStorage) || null);
     });
   });
 }
 
 function _save(stored: SchemaStorage): Promise<void> {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     chrome.storage.local.set({ [STORAGE_KEY]: stored }, resolve);
   });
 }
@@ -85,10 +85,10 @@ function _ensureDefault(stored: SchemaStorage | null): SchemaStorage {
 // WHY: deep copy so mutations to stored data never affect the constant DEFAULT_SCHEMA
 function _cloneDefault(): Schema {
   return {
-    id:         DEFAULT_SCHEMA.id,
-    name:       DEFAULT_SCHEMA.name,
+    id: DEFAULT_SCHEMA.id,
+    name: DEFAULT_SCHEMA.name,
     is_default: true,
-    columns:    DEFAULT_SCHEMA.columns.map((c: Column) => ({ ...c })),
+    columns: DEFAULT_SCHEMA.columns.map((c: Column) => ({ ...c })),
   };
 }
 
@@ -132,7 +132,7 @@ function _uniqueName(name: string, existingLowerSet: Set<string>): string {
 export async function getAllSchemas() {
   const stored = await _load();
   if (!stored) return [_cloneDefault()];
-  const hasDefault = stored.schemas.some(s => s.id === DEFAULT_SCHEMA_ID);
+  const hasDefault = stored.schemas.some((s) => s.id === DEFAULT_SCHEMA_ID);
   if (!hasDefault) return [_cloneDefault(), ...stored.schemas];
   return stored.schemas;
 }
@@ -140,7 +140,7 @@ export async function getAllSchemas() {
 export async function getActiveSchema() {
   const stored = await _load();
   if (!stored) return _cloneDefault();
-  const active = stored.schemas.find(s => s.id === stored.active_schema_id);
+  const active = stored.schemas.find((s) => s.id === stored.active_schema_id);
   return active || _cloneDefault();
 }
 
@@ -162,20 +162,25 @@ export async function saveSchema(schema: Schema): Promise<void> {
     // WHY: exclude self so same-name save is a no-op; auto-suffix on collision with a
     // different schema (rename path — EXT-UI-RESTRUCTURE Step 1c)
     const existingLower = new Set(
-      stored.schemas.filter((s: Schema) => s.id !== schema.id).map((s: Schema) => s.name.toLowerCase())
+      stored.schemas
+        .filter((s: Schema) => s.id !== schema.id)
+        .map((s: Schema) => s.name.toLowerCase()),
     );
     stored.schemas[idx] = { ...schema, name: _uniqueName(schema.name, existingLower) };
   } else {
     // WHY: btn-schema-new in popup-schema.js creates a single stub column { name: 'New Column', source: null };
     // substitute the 7-column template so new schemas start pre-populated (EXT-UI-RESTRUCTURE Step 1)
-    const isStub = schema.columns.length === 1
-      && schema.columns[0].name === 'New Column'
-      && schema.columns[0].source === null;
+    const isStub =
+      schema.columns.length === 1 &&
+      schema.columns[0].name === 'New Column' &&
+      schema.columns[0].source === null;
     if (isStub) {
       schema = {
         ...schema,
         columns: DEFAULT_NEW_SCHEMA_COLUMNS.map((c: Pick<Column, 'name' | 'source'>) => ({
-          id: crypto.randomUUID(), name: c.name, source: c.source,
+          id: crypto.randomUUID(),
+          name: c.name,
+          source: c.source,
         })),
       };
     }
@@ -213,10 +218,10 @@ export async function duplicateSchema(id: string): Promise<Schema> {
   const candidateName = _uniqueName(`${source.name} (Copy)`, existingLower);
 
   const copy: Schema = {
-    id:         crypto.randomUUID(),
-    name:       candidateName,
+    id: crypto.randomUUID(),
+    name: candidateName,
     is_default: false,
-    columns:    source.columns.map((c: Column) => ({ ...c, id: crypto.randomUUID() })),
+    columns: source.columns.map((c: Column) => ({ ...c, id: crypto.randomUUID() })),
   };
 
   stored.schemas.push(copy);
@@ -235,7 +240,9 @@ export async function setActiveSchema(id: string): Promise<void> {
 // ── Import / Export ──────────────────────────────────────────────────────────
 
 // WHY: importSchema accepts a parsed object { schema_name, columns[] } — caller is responsible for JSON.parse
-export async function importSchema(json: unknown): Promise<{ success: false; error: string } | { success: true; name: string }> {
+export async function importSchema(
+  json: unknown,
+): Promise<{ success: false; error: string } | { success: true; name: string }> {
   const { schema_name, columns } = (json as Record<string, unknown>) || {};
 
   if (!schema_name || !(schema_name as string).trim()) {
@@ -252,12 +259,12 @@ export async function importSchema(json: unknown): Promise<{ success: false; err
   const uniqueName = _uniqueName((schema_name as string).trim(), existingLower);
 
   const schema: Schema = {
-    id:         crypto.randomUUID(),
-    name:       uniqueName,
+    id: crypto.randomUUID(),
+    name: uniqueName,
     is_default: false,
-    columns:    (columns as Array<{ name?: string; source?: string | null }>).map(c => ({
-      id:     crypto.randomUUID(), // WHY: generate new ids on import; round-trip id stability is not guaranteed
-      name:   c.name || '',
+    columns: (columns as Array<{ name?: string; source?: string | null }>).map((c) => ({
+      id: crypto.randomUUID(), // WHY: generate new ids on import; round-trip id stability is not guaranteed
+      name: c.name || '',
       source: c.source || null,
     })),
   };
@@ -275,12 +282,14 @@ export async function importSchema(json: unknown): Promise<{ success: false; err
 }
 
 // WHY: exportSchema strips is_default and top-level id — output is a portable descriptor, not a storage record
-export async function exportSchema(id: string): Promise<{ schema_name: string; columns: Column[] }> {
+export async function exportSchema(
+  id: string,
+): Promise<{ schema_name: string; columns: Column[] }> {
   const schema = await getSchemaById(id);
   if (!schema) throw new Error(`Schema not found: ${id}`);
   return {
     schema_name: schema.name,
-    columns:     schema.columns.map((c: Column) => ({ id: c.id, name: c.name, source: c.source })),
+    columns: schema.columns.map((c: Column) => ({ id: c.id, name: c.name, source: c.source })),
   };
 }
 
@@ -291,30 +300,30 @@ export async function migrateFromLegacy(): Promise<void> {
   const existing = await _load();
   if (existing) return; // WHY: already migrated — schemas key present, skip
 
-  return new Promise(resolve => {
-    chrome.storage.local.get(LEGACY_KEY, result => {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(LEGACY_KEY, (result) => {
       const legacy = result[LEGACY_KEY] as LegacyExportSchema | undefined;
 
       if (legacy && Array.isArray(legacy.columns) && legacy.columns.length > 0) {
         // WHY: treat legacy export_schema as a custom schema (user may have edited it)
         const customSchema: Schema = {
-          id:         crypto.randomUUID(),
-          name:       'Custom',
+          id: crypto.randomUUID(),
+          name: 'Custom',
           is_default: false,
-          columns:    legacy.columns.map((c: Column) => ({
-            id:     c.id || crypto.randomUUID(), // WHY: preserve existing column ids for custom_fields key stability
-            name:   c.name || '',
+          columns: legacy.columns.map((c: Column) => ({
+            id: c.id || crypto.randomUUID(), // WHY: preserve existing column ids for custom_fields key stability
+            name: c.name || '',
             source: c.source || null,
           })),
         };
         _save({
-          schemas:          [_cloneDefault(), customSchema],
+          schemas: [_cloneDefault(), customSchema],
           active_schema_id: customSchema.id,
         }).then(resolve);
       } else {
         // WHY: no legacy data — init fresh with Default as active
         _save({
-          schemas:          [_cloneDefault()],
+          schemas: [_cloneDefault()],
           active_schema_id: DEFAULT_SCHEMA_ID,
         }).then(resolve);
       }

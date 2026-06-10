@@ -42,7 +42,9 @@ import type { CaptureItem, SchemaStorage } from './types';
 // ── Badge count ─────────────────────────────────────────────────────────────
 
 async function updateBadge() {
-  const { captures = [] } = await chrome.storage.local.get('captures') as { captures?: CaptureItem[] };
+  const { captures = [] } = (await chrome.storage.local.get('captures')) as {
+    captures?: CaptureItem[];
+  };
   const count = captures.length;
   if (count === 0) {
     chrome.action.setBadgeText({ text: '' });
@@ -60,7 +62,8 @@ async function computeHash(text: string) {
     const data = new TextEncoder().encode(text);
     const buf = await self.crypto.subtle.digest('SHA-256', data);
     const hex = Array.from(new Uint8Array(buf))
-      .map(b => b.toString(16).padStart(2, '0')).join('');
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
     return 'sha256:' + hex;
   } catch {
     return null;
@@ -82,11 +85,13 @@ function flashBadge(success: boolean) {
 
 async function getActiveSchema() {
   // WHY: stamps schema provenance on link-capture items (same field as popup.js savePreviewItem)
-  const { schemas: sd = {} as SchemaStorage } = await chrome.storage.local.get('schemas') as { schemas?: SchemaStorage };
-  const list   = Array.isArray(sd.schemas) ? sd.schemas : [];
+  const { schemas: sd = {} as SchemaStorage } = (await chrome.storage.local.get('schemas')) as {
+    schemas?: SchemaStorage;
+  };
+  const list = Array.isArray(sd.schemas) ? sd.schemas : [];
   const active = list.find((s: { id: string }) => s.id === sd.active_schema_id) ?? list[0];
   return {
-    id:   active?.id   ?? '00000000-0000-0000-0000-000000000001',
+    id: active?.id ?? '00000000-0000-0000-0000-000000000001',
     name: active?.name ?? 'Default',
   };
 }
@@ -95,7 +100,9 @@ async function getActiveSchema() {
 
 async function appendCapture(item: CaptureItem) {
   // WHY: prepend to captures[] so newest items appear first — matches popup.js saveInbox order
-  const { captures = [] } = await chrome.storage.local.get('captures') as { captures?: CaptureItem[] };
+  const { captures = [] } = (await chrome.storage.local.get('captures')) as {
+    captures?: CaptureItem[];
+  };
   await chrome.storage.local.set({ captures: [item, ...captures] });
 }
 
@@ -108,35 +115,54 @@ function extractMetaFromHTML(html: string, url: string) {
   if (typeof DOMParser !== 'undefined') {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     // WHY: prefer article:published_time (structured schema.org) over pubdate and time[datetime]
-    let rawDate = (doc.querySelector('meta[property="article:published_time"]') as HTMLMetaElement | null)?.content
-               ?? (doc.querySelector('meta[name="pubdate"]') as HTMLMetaElement | null)?.content
-               ?? doc.querySelector('time[datetime]')?.getAttribute('datetime')
-               ?? null;
+    let rawDate =
+      (doc.querySelector('meta[property="article:published_time"]') as HTMLMetaElement | null)
+        ?.content ??
+      (doc.querySelector('meta[name="pubdate"]') as HTMLMetaElement | null)?.content ??
+      doc.querySelector('time[datetime]')?.getAttribute('datetime') ??
+      null;
     // WHY: some sites set article:published_time to Unix epoch (e.g., udn.com → 1970-01-01);
     // article:modified_time is a better proxy when published_time is clearly broken
     if (rawDate) {
       try {
         if (new Date(rawDate).getFullYear() < 2000) {
-          rawDate = (doc.querySelector('meta[property="article:modified_time"]') as HTMLMetaElement | null)?.content ?? rawDate;
+          rawDate =
+            (doc.querySelector('meta[property="article:modified_time"]') as HTMLMetaElement | null)
+              ?.content ?? rawDate;
         }
-      } catch { /* keep rawDate as-is */ }
+      } catch {
+        /* keep rawDate as-is */
+      }
     }
     return {
       // WHY: prefer og:title over <title> — og:title is the article headline; <title> often has
       // site name appended ("Article Title | Site Name")
-      title:   (doc.querySelector('meta[property="og:title"]') as HTMLMetaElement | null)?.content?.trim()
-               ?? doc.querySelector('title')?.textContent?.trim()
-               ?? '',
-      source:  (doc.querySelector('meta[property="og:site_name"]') as HTMLMetaElement | null)?.content?.trim()
-               || new URL(url).hostname,
-      author:  (doc.querySelector('meta[name="author"]') as HTMLMetaElement | null)?.content?.trim()
-               || (doc.querySelector('meta[property="article:author"]') as HTMLMetaElement | null)?.content?.trim()
-               || null,
+      title:
+        (
+          doc.querySelector('meta[property="og:title"]') as HTMLMetaElement | null
+        )?.content?.trim() ??
+        doc.querySelector('title')?.textContent?.trim() ??
+        '',
+      source:
+        (
+          doc.querySelector('meta[property="og:site_name"]') as HTMLMetaElement | null
+        )?.content?.trim() || new URL(url).hostname,
+      author:
+        (doc.querySelector('meta[name="author"]') as HTMLMetaElement | null)?.content?.trim() ||
+        (
+          doc.querySelector('meta[property="article:author"]') as HTMLMetaElement | null
+        )?.content?.trim() ||
+        null,
       rawDate,
       // WHY: og:description is the best available content proxy when article body is not extracted
-      content: (doc.querySelector('meta[property="og:description"]') as HTMLMetaElement | null)?.content?.trim()
-               || (doc.querySelector('meta[name="description"]') as HTMLMetaElement | null)?.content?.trim()
-               || '',
+      content:
+        (
+          doc.querySelector('meta[property="og:description"]') as HTMLMetaElement | null
+        )?.content?.trim() ||
+        (
+          doc.querySelector('meta[name="description"]') as HTMLMetaElement | null
+        )?.content?.trim() ||
+        '',
     };
   }
   // ── Regex fallback ─────────────────────────────────────────────────────────
@@ -144,30 +170,33 @@ function extractMetaFromHTML(html: string, url: string) {
     // WHY: attribute order varies — match both orderings (property/name before/after content)
     const re = new RegExp(
       `<meta[^>]+${nameAttr}=["']${nameVal}["'][^>]+content=["']([^"'<>]+)["']` +
-      `|<meta[^>]+content=["']([^"'<>]+)["'][^>]+${nameAttr}=["']${nameVal}["']`,
-      'i'
+        `|<meta[^>]+content=["']([^"'<>]+)["'][^>]+${nameAttr}=["']${nameVal}["']`,
+      'i',
     );
     const m = re.exec(html);
     return m ? (m[1] ?? m[2] ?? '').trim() || null : null;
   }
-  const ogTitle  = _reMeta('property', 'og:title');
+  const ogTitle = _reMeta('property', 'og:title');
   const titleTag = /<title[^>]*>([^<]+)<\/title>/i.exec(html);
-  const timeTag  = /<time[^>]+datetime=["']([^"'<>]+)["']/i.exec(html);
-  let rawDate = _reMeta('property', 'article:published_time')
-              ?? _reMeta('name', 'pubdate')
-              ?? (timeTag ? timeTag[1].trim() : null);
+  const timeTag = /<time[^>]+datetime=["']([^"'<>]+)["']/i.exec(html);
+  let rawDate =
+    _reMeta('property', 'article:published_time') ??
+    _reMeta('name', 'pubdate') ??
+    (timeTag ? timeTag[1].trim() : null);
   // WHY: same epoch fallback as DOMParser path
   if (rawDate) {
     try {
       if (new Date(rawDate).getFullYear() < 2000) {
         rawDate = _reMeta('property', 'article:modified_time') ?? rawDate;
       }
-    } catch { /* keep rawDate as-is */ }
+    } catch {
+      /* keep rawDate as-is */
+    }
   }
   return {
-    title:   ogTitle ?? (titleTag ? titleTag[1].trim() : '') ?? '',
-    source:  _reMeta('property', 'og:site_name') || new URL(url).hostname,
-    author:  _reMeta('name', 'author') ?? _reMeta('property', 'article:author'),
+    title: ogTitle ?? (titleTag ? titleTag[1].trim() : '') ?? '',
+    source: _reMeta('property', 'og:site_name') || new URL(url).hostname,
+    author: _reMeta('name', 'author') ?? _reMeta('property', 'article:author'),
     rawDate,
     content: _reMeta('property', 'og:description') ?? _reMeta('name', 'description') ?? '',
   };
@@ -179,13 +208,13 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: 'capture-page',
     title: 'Capture this page (OSINT)',
-    contexts: ['page', 'selection']
+    contexts: ['page', 'selection'],
   });
   // WHY: separate menu item for link targets — direct fetch+store, no popup required
   chrome.contextMenus.create({
     id: 'capture-link',
     title: 'Capture this link (OSINT)',
-    contexts: ['link']
+    contexts: ['link'],
   });
   updateBadge();
 });
@@ -206,7 +235,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
   if (info.menuItemId === 'capture-link') {
     // WHY: catch at top level — any failure in the async chain calls flashBadge(false)
-    captureLinkItem(info.linkUrl!).catch(err => {
+    captureLinkItem(info.linkUrl!).catch((err) => {
       console.error('[capture-link] failed:', err);
       flashBadge(false);
     });
@@ -217,7 +246,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 async function captureLinkItem(rawUrl: string) {
   const providers = await loadCleanRules();
-  const url       = cleanUrl(rawUrl, providers);
+  const url = cleanUrl(rawUrl, providers);
 
   const response = await fetch(url);
   // WHY: non-2xx responses (login walls, paywalls) still return HTML — proceed; truly malformed
@@ -227,24 +256,24 @@ async function captureLinkItem(rawUrl: string) {
   // WHY: extractMetaFromHTML handles DOMParser unavailability via typeof guard + regex fallback
   const { title, source, author, rawDate, content } = extractMetaFromHTML(html, url);
 
-  const norm        = rawDate ? normalizeDate(rawDate) : { iso: null, failed: false };
-  const article_date = (norm.iso !== null) ? norm.iso : rawDate;
+  const norm = rawDate ? normalizeDate(rawDate) : { iso: null, failed: false };
+  const article_date = norm.iso !== null ? norm.iso : rawDate;
 
-  const content_hash                    = await computeHash(content);
+  const content_hash = await computeHash(content);
   const { id: schema_id, name: schema_name } = await getActiveSchema();
 
   const item = {
-    id:            crypto.randomUUID(),
+    id: crypto.randomUUID(),
     title,
     url,
     source,
     author,
-    captured_at:   localISOWithOffset(),
-    article_date:  article_date || null,
+    captured_at: localISOWithOffset(),
+    article_date: article_date || null,
     content,
     content_hash,
     raw_html_path: null,
-    pdf_path:      null,
+    pdf_path: null,
     schema_id,
     schema_name,
   };
@@ -265,7 +294,7 @@ chrome.commands.onCommand.addListener((command) => {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'HASH_CONTENT') {
-    computeHash(msg.text).then(hash => sendResponse({ hash }));
+    computeHash(msg.text).then((hash) => sendResponse({ hash }));
     return true; // async
   }
   if (msg.type === 'PICK_DONE') {
